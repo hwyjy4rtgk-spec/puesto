@@ -2,7 +2,7 @@
 
 App web para vender cámaras de segunda mano en ferias. Funciona como un chat: el vendedor pregunta ("¿tienes Canon?", "algo bajo 100 lucas") y anota ventas o apartados escribiendo. El stock se comparte en vivo entre el dueño y los vendedores.
 
-- **Frontend:** HTML/CSS/JS estático en `public/`, servido por Cloudflare Workers (static assets).
+- **Frontend:** HTML/CSS/JS estático en `public/`, publicado en GitHub Pages (rama `gh-pages`, se actualiza sola con cada cambio en `main`).
 - **Base de datos, login y fotos:** Supabase, proyecto `puesto` (`apilqdurybxthqmozyrh`, São Paulo). Ya está creado y con el esquema aplicado.
 
 ## 1. Ajustar Supabase (2 minutos, una vez)
