@@ -731,5 +731,9 @@ sb.auth.onAuthStateChange((ev,session)=>{if(ev==='SIGNED_OUT'&&me.id){/* handled
   if(!session){if(cached&&me.role&&!navigator.onLine){online=false;await start(true);return}showGate('auth');return}
   try{await enter(session)}catch(e){if(cached&&me.role)await start(true);else showGate('auth')}
 })();
-if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
+if('serviceWorker' in navigator&&location.protocol==='https:'){
+  const hadController=!!navigator.serviceWorker.controller;let reloaded=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(hadController&&!reloaded&&!outbox.length){reloaded=true;location.reload()}});
+  navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+}
 })();
