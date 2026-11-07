@@ -1,6 +1,6 @@
 // Copia local para abrir la app sin señal.
 // Con señal siempre se pide la versión nueva (network-first); sin señal se usa la copia guardada.
-const V='puesto-v7';
+const V='puesto-v8';
 const SHELL=['./','./index.html','./styles.css','./app.js','./config.js','./vendor/supabase.js','./vendor/591.supabase.js','./icon.svg','./manifest.webmanifest'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(V).then(c=>Promise.all(SHELL.map(u=>fetch(u,{cache:'reload'}).then(r=>r.ok&&c.put(u,r)).catch(()=>{})))).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==V).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
