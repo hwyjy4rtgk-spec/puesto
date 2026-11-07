@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="styles.css?v=9">
+<link rel="stylesheet" href="styles.css?v=10">
 <style>
 :root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 *,*::before,*::after{box-sizing:border-box}
@@ -36,13 +36,13 @@ img{max-width:100%}
       <label class="f" id="nameRow" hidden>Tu nombre<input id="aName" autocomplete="name" placeholder="Ej: Diego"></label>
       <label class="f">Correo<input id="aEmail" type="email" autocomplete="email" inputmode="email" required></label>
       <label class="f">Contraseña<input id="aPass" type="password" autocomplete="current-password" minlength="6" required></label>
-      <label class="f" id="codeRow" hidden>Código del puesto<input id="aCode" autocomplete="off" autocapitalize="characters" maxlength="6" placeholder="Te lo da el dueño" style="text-transform:uppercase;letter-spacing:.15em"><small>Déjalo vacío solo si eres el dueño y es la primera cuenta.</small></label>
+      <label class="f" id="codeRow" hidden>Código del puesto<input id="aCode" autocomplete="off" autocapitalize="characters" maxlength="8" placeholder="Te lo da el dueño" style="text-transform:uppercase;letter-spacing:.15em"><small>Déjalo vacío solo si eres el dueño y es la primera cuenta.</small></label>
       <div class="gerr" id="authErr" role="alert"></div>
       <button class="btn primary" id="authBtn" type="submit">Entrar</button>
       <button class="link" type="button" data-act="toggleAuth" id="authToggle">¿Primera vez? Crea tu cuenta</button>
     </form>
     <form id="joinForm" class="gform" novalidate hidden>
-      <label class="f">Código del puesto<input id="jCode" autocomplete="off" autocapitalize="characters" maxlength="6" placeholder="Ej: 4F2A9C" style="text-transform:uppercase;letter-spacing:.2em;font-weight:600;text-align:center;font-size:22px"></label>
+      <label class="f">Código del puesto<input id="jCode" autocomplete="off" autocapitalize="characters" maxlength="8" placeholder="Ej: K7MW4RQ2" style="text-transform:uppercase;letter-spacing:.2em;font-weight:600;text-align:center;font-size:22px"></label>
       <div class="gerr" id="joinErr" role="alert"></div>
       <button class="btn primary" type="submit">Unirme</button>
       <button class="link" type="button" data-act="signOut">Usar otra cuenta</button>
@@ -141,8 +141,14 @@ img{max-width:100%}
 
 <div class="toast" id="toast" role="status"></div>
 </div>
-<script src="vendor/supabase.js?v=9"></script>
-<script src="config.js?v=9"></script>
-<script src="app.js?v=9"></script>
+<script src="vendor/supabase.js?v=10"></script>
+<script src="config.js?v=10"></script>
+<script src="js/core.js?v=10"></script>
+<script src="js/lenguaje.js?v=10"></script>
+<script src="js/asistente.js?v=10"></script>
+<script src="js/buscador.js?v=10"></script>
+<script src="js/panel.js?v=10"></script>
+<script src="js/eventos.js?v=10"></script>
+<script src="js/arranque.js?v=10"></script>
 </body>
 </html>

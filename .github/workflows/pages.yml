@@ -1,5 +1,6 @@
-name: Publicar en GitHub Pages
-# Copia public/ a la rama gh-pages en cada cambio de main. GitHub Pages sirve esa rama.
+name: Probar y publicar
+# En cada cambio de main: corre las pruebas (app real + Supabase falso) y, si pasan,
+# copia public/ a la rama gh-pages. GitHub Pages sirve esa rama.
 on:
   push:
     branches: [main]
@@ -10,7 +11,19 @@ concurrency:
   group: pages
   cancel-in-progress: true
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
   publish:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
