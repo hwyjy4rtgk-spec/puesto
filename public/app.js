@@ -266,7 +266,7 @@ function handle(raw){
   const text=raw.trim();if(!text)return;meSay(text);
   const t=deac(text).replace(/[¿?¡!]/g,' ').replace(/\s+/g,' ').trim();
   if(pending&&pending.kind==='holdName'){const i=byId(pending.id);pending=null;if(live(i)&&!/^(cancela|no|olvida)/.test(t)){doHold(i,text);return}bot({text:'Ok, no la aparté.'});return}
-  if(/^(hola|buenas|buen dia|buenos dias|buenas tardes|hey|wena)\b/.test(t)&&t.split(' ').length<=3){bot({text:`Hola${me.name?' '+me.name.split(' ')[0]:''}. Quedan **${nAvail()} disponibles**. Pregúntame por una cámara, una marca o un presupuesto.`,say:defaultSay()});return}
+  if(/^(hola|buenas|buen dia|buenos dias|buenas tardes|hey|wena)\b/.test(t)&&t.split(' ').length<=3){bot({text:`Hola${me.name?' '+me.name.split(' ')[0]:''}. Tengo **${nCam()} cámaras** y **${nAcc()} accesorios** disponibles. Dime qué busca el cliente: una marca, un tipo o un presupuesto.`});return}
   if(/\b(ayuda|como funciona|que puedo|que haces|comandos)\b/.test(t)){help();return}
   if(/\b(resumen|cuanto (llevo|llevamos|vendi|vendimos|hemos)|total del dia|caja|cierre|ventas de hoy|como vamos)\b/.test(t)){summary();return}
   if(/^(deshace|deshacer|me equivoque|anula|anular)\b/.test(t)){const s=[...evSales()].reverse().find(x=>!x.void&&(!S.seller||x.sellerId===me.id));if(s)voidSale(s.id);else bot({text:'No hay ventas tuyas para anular en este evento.'});return}
@@ -286,15 +286,16 @@ function handle(raw){
 function find(t){
   const a=analyze(t);
   if(!a.toks.length&&!a.type&&!a.brand&&a.max==null&&a.min==null&&!a.beginner){overview();return}
-  const all=match(a,S.items.filter(live)),av=all.filter(avail),held=all.filter(i=>i.status==='apart');
+  const camOnly=(a.max!=null||a.min!=null||a.beginner)&&!a.toks.length&&!(a.type&&ACC_TYPES.includes(a.type));
+  const all=match(a,S.items.filter(i=>live(i)&&(!camOnly||isCam(i)))),av=all.filter(avail),held=all.filter(i=>i.status==='apart');
   if(!all.length){
     const sold=a.toks.length?match({...a,min:null,max:null},S.items.filter(i=>!live(i))):[];const near=nearby(a);
     if(sold.length){bot({text:`La **${sold[0].name}** ya se vendió.${near.length?' Puedes ofrecerle estas:':''}`,items:near.map(i=>i.id)});return}
     bot({text:`No tengo ${describe(a,2)}.${near.length?' Lo más parecido:':' Prueba con otra marca o con un tipo de cámara.'}`,items:near.map(i=>i.id),say:near.length?[]:defaultSay()});return;
   }
-  if(all.length===1){const i=all[0];ctx.last=i.id;bot({text:i.status==='apart'?`Tengo una, pero está **apartada** (${i.holdFor||'sin nombre'}).`:`Sí, tengo ${a.type&&!a.toks.length?'una':'esta'}:`,items:[i.id],detail:true});return}
-  let txt=`Tengo **${av.length}** ${describe(a,av.length)}`;txt+=held.length?`, más ${held.length} ${held.length===1?'apartada':'apartadas'}.`:'.';
-  if(a.max!=null||a.min!=null||a.beginner)txt+=' Ordenadas por precio.';
+  if(all.length===1){const i=all[0];ctx.last=i.id;bot({text:i.status==='apart'?`Está **apartada** (${i.holdFor||'sin nombre'}).`:i.qty>1?`Sí, quedan **${i.qty}**.`:`Sí, queda **1**.`,items:[i.id],detail:true});return}
+  const units=av.reduce((x,i)=>x+i.qty,0);let txt=`Tengo **${units}** ${describe(a,units)}`;txt+=held.length?`, más ${held.length} ${held.length===1?'apartada':'apartadas'}.`:'.';
+  if(a.max!=null||a.min!=null||a.beginner)txt+=' De la más barata a la más cara.';
   bot({text:txt,items:[...av,...held].map(i=>i.id),limit:6});
 }
 function overview(){
@@ -303,7 +304,7 @@ function overview(){
   const accN=S.items.filter(i=>avail(i)&&!isCam(i)).reduce((a,i)=>a+i.qty,0),camN=nAvail()-accN;
   bot({text:`Quedan **${camN} ${camN===1?'cámara':'cámaras'}**${accN?` y **${accN} ${accN===1?'accesorio':'accesorios'}**`:''}: ${by.map(([t,n])=>`${n} ${n===1?t.toLowerCase():PLURAL[t].replace(/^de /,'')}`).join(', ')}.`,say:by.slice(0,5).map(([t])=>t==='Película'?'Rollos':t==='Formato medio'?'Formato medio':PLURAL[t].charAt(0).toUpperCase()+PLURAL[t].slice(1)).concat(['Ver todo'])});
 }
-function help(){bot({text:'Escríbeme como le hablarías a un compañero. Por ejemplo:',say:['¿Tienes Canon?','Algo bajo 100 lucas','Réflex para empezar','Vendí la Pentax en 200 efectivo','Aparta la Olympus para Diego','Resumen del día']})}
+function help(){const b=[...new Set(S.items.filter(avail).map(i=>brandOf(i.name)))].slice(0,2);bot({text:'Escríbeme como le hablarías a un compañero. Puedo **buscar**, **vender**, **apartar** y darte el **resumen del día**. Prueba con:',say:[`¿Tienes ${b[0]||'Canon'}?`,'Algo bajo 50 lucas',`Vendí la ${b[1]||'Olympus'} en efectivo`,`Aparta la ${b[0]||'Canon'} para Diego`,'Resumen del día']})}
 function summary(){
   const ok=evSales().filter(s=>!s.void),tot=ok.reduce((a,s)=>a+s.price,0),by=m=>ok.filter(s=>s.method===m).reduce((a,s)=>a+s.price,0);
   bot({text:ok.length?`Llevas **${clp.format(tot)}** en ${ok.length} ${ok.length===1?'venta':'ventas'}. Efectivo ${clp.format(by('Efectivo'))}, tarjeta ${clp.format(by('Tarjeta'))}, transferencia ${clp.format(by('Transferencia'))}. Quedan ${nAvail()} disponibles.`:`Todavía no hay ventas en “${S.event.name}”. Quedan ${nAvail()} disponibles.`,copyReport:ok.length>0});
@@ -324,7 +325,7 @@ function sellIntent(t){
 }
 function startSell(i,price,method){
   ctx.last=i.id;if(!live(i)){bot({text:`La ${i.name} ya está vendida.`});return}
-  bot({text:i.status==='apart'?`Ojo: está apartada (${i.holdFor||'sin nombre'}). Si igual la vendes, confirma:`:'Confirma la venta:',confirm:{id:i.id,price:price||i.price,method:method||'Efectivo',state:'open'}});
+  bot({text:i.status==='apart'?`Ojo: está apartada (${i.holdFor||'sin nombre'}). Si igual la vendes, confirma:`:'Elige el medio de pago y confirma:',confirm:{id:i.id,price:price||i.price,method:method||'Efectivo',state:'open'}});
 }
 function holdIntent(t){
   let body=t.replace(/^(aparta|apartala|apartar|reserva|reservala|guarda|guardala)\s*/,'');let who='';
@@ -368,15 +369,16 @@ async function addIntent(text){
   if(!base.items.some(r=>r.id===data.id))base.items.push(data);derive();ctx.last=data.id;
   bot({text:`Agregada como ${row.type.toLowerCase()}, estado ${cond.toLowerCase()}. Toca la ficha para completar qué decirle al cliente y lo probado.`,items:[data.id],editHint:data.id});after();
 }
-const defaultSay=()=>['¿Qué hay bajo 100 lucas?','Réflex para empezar','Compactas','Apartadas','Resumen del día'];
+const defaultSay=()=>{const av=S.items.filter(avail);const b=Object.entries(av.filter(isCam).reduce((a,i)=>{const k=brandOf(i.name);a[k]=(a[k]||0)+i.qty;return a},{})).sort((x,y)=>y[1]-x[1]).slice(0,2).map(x=>`¿Tienes ${x[0]}?`);return ['Bajo 50 lucas',...b,'Accesorios','Resumen del día']};
 
 /* ================= acciones ================= */
 function confirmSale(msg){
   const c=msg.confirm,i=byId(c.id);if(!live(i)||c.state!=='open')return;
   const min=i.min||i.price;if(c.price<min||!(c.price>0))return;
   const op={kind:'sell',id:uuid(),item_id:i.id,name:i.name,list:i.price,price:c.price,method:c.method,sold_at:new Date().toISOString()};
-  c.state='done';c.sale=op.id;enqueue(op);
-  bot({text:`**Vendida.** ${i.name} en ${clp.format(op.price)} (${op.method.toLowerCase()}). Quedan ${nAvail()} disponibles.${online?'':' Sin señal: se enviará apenas vuelva.'}`,undo:{sale:op.id}});
+  c.state='done';c.sale=op.id;msg.undo={sale:op.id};enqueue(op);
+  msg.text=`**Vendida.** ${i.qty>1?`Quedan ${i.qty-1} de este modelo.`:'Era la última de este modelo.'}${online?'':' Sin señal: se enviará apenas vuelva.'}`;
+  msg.say=['Resumen del día','Accesorios'];
   try{navigator.vibrate&&navigator.vibrate(30)}catch(e){}
 }
 function voidSale(id){
@@ -388,91 +390,134 @@ function voidSale(id){
 }
 
 /* ================= render chat ================= */
-function cardHTML(i){return `<button class="card ${live(i)?'':'dim'}" data-open="${i.id}"><span class="thumb">${thumb(i)}</span><span class="mid"><span class="nm">${esc(i.name)}</span><span class="meta">${esc(i.type)}${i.compatible?' · para '+esc(i.compatible):' · '+esc(i.cond)}${i.status==='apart'&&i.holdFor&&live(i)?' · '+esc(i.holdFor):''}</span></span><span class="right"><span class="price num${i.price>0?'':' np'}">${ptxt(i)}</span>${dot(i)}</span></button>`}
+const shortName=i=>{const w=i.name.replace(/\(.*?\)/g,'').trim().split(/\s+/);return w.slice(0,Math.min(3,w.length)).join(' ')};
+const nAcc=()=>nAvail()-nCam();
+const meta=i=>{const p=[i.type];if(i.compatible)p.push('para '+i.compatible);else if(i.cond&&i.cond!=='Muy buena')p.push(i.cond);if(i.status==='apart'&&live(i))p.push('apartada'+(i.holdFor?' · '+i.holdFor:''));return p.join(' · ')};
+const stock=i=>!live(i)?'<span class="st bad">Vendida</span>':i.status==='apart'?'<span class="st hold">Apartada</span>':i.qty>1?`<span class="st ok num">${i.qty} disp.</span>`:'<span class="st ok">Disponible</span>';
+function rowHTML(i,attrs){return `<button class="row2 ${live(i)?'':'dim'}" ${attrs||`data-open="${i.id}"`}><span class="thumb">${thumb(i)}</span><span class="mid"><span class="nm">${esc(i.name)}</span><span class="meta">${esc(meta(i))}</span></span><span class="right"><span class="price num${i.price>0?'':' np'}">${ptxt(i)}</span>${stock(i)}</span></button>`}
+const cardHTML=i=>rowHTML(i);
+function tileHTML(i,attrs){return `<button class="tile ${live(i)?'':'dim'}" ${attrs||`data-open="${i.id}"`}><span class="tthumb">${thumb(i)}</span><span class="tnm">${esc(i.name)}</span><span class="tft"><span class="price num${i.price>0?'':' np'}">${i.price>0?clp.format(i.price):'Consultar'}</span>${stock(i)}</span></button>`}
 function bigHTML(i){
-  return `<div class="big"><button class="top" data-open="${i.id}"><span class="thumb">${thumb(i)}</span><span style="min-width:0;flex:1"><h4>${esc(i.name)}</h4><div class="meta">${esc(i.type)} · ${esc(i.cond)}</div></span></button>
-  <div class="pr"><span class="price num${i.price>0?'':' np'}">${ptxt(i)}</span>${dot(i)}</div>
-  ${i.pitch?`<div class="pitch">${esc(i.pitch)}</div>`:''}
-  ${live(i)?`<div class="acts"><button class="btn primary" data-sell="${i.id}">Vender</button>${i.status==='apart'?`<button class="btn" data-release="${i.id}">Liberar</button>`:`<button class="btn" data-hold="${i.id}">Apartar</button>`}<button class="btn ghost" data-open="${i.id}" style="flex:0 0 auto">Ficha</button></div>`:''}</div>`;
+  return `<div class="big"><button class="top" data-open="${i.id}"><span class="thumb">${thumb(i)}</span><span class="mid"><h4>${esc(i.name)}</h4><span class="meta">${esc(meta(i))}</span></span><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></button>
+  <div class="pr"><span class="price num${i.price>0?'':' np'}">${ptxt(i)}</span>${stock(i)}</div>
+  ${i.pitch?`<div class="pitch"><small>Para el cliente</small>${esc(i.pitch)}</div>`:''}
+  ${i.notes?`<div class="bnote">${esc(i.notes)}</div>`:''}
+  ${live(i)?`<div class="acts"><button class="btn primary" data-sell="${i.id}">Vender</button>${i.status==='apart'?`<button class="btn" data-release="${i.id}">Liberar</button>`:`<button class="btn" data-hold="${i.id}">Apartar</button>`}</div>`:''}</div>`;
+}
+const pickAttr=(m,i)=>m.pick&&live(i)?`data-picksell="${i.id}" data-cm="${m.id}"`:m.pickHold!=null&&avail(i)?`data-pickhold="${i.id}" data-cm="${m.id}"`:'';
+function itemsHTML(m){
+  const its=(m.items||[]).map(byId).filter(Boolean);if(!its.length)return '';
+  if(m.detail&&its.length===1)return bigHTML(its[0]);
+  if(its.length<=3||m.pick||m.pickHold!=null)return `<div class="rows">${its.slice(0,8).map(i=>rowHTML(i,pickAttr(m,i))).join('')}</div>${its.length>8?`<button class="more" data-list="${m.id}">Ver las ${its.length}</button>`:''}`;
+  return `<div class="car" role="list">${its.slice(0,12).map(i=>tileHTML(i)).join('')}${its.length>12?`<button class="tile more-tile" data-list="${m.id}"><b class="num">+${its.length-12}</b><span>Ver todas</span></button>`:''}</div><button class="more" data-list="${m.id}">Ver lista completa (${its.length})</button>`;
 }
 function confirmHTML(m){
   const c=m.confirm,i=byId(c.id);if(!i)return '';
-  if(c.state==='done'){const s=S.sales.find(x=>x.id===c.sale);return `<div class="confirmc done"><h4>${esc(i.name)}</h4><span class="state">${!s?'Venta no registrada':s.void?'Venta registrada y luego anulada':s.pending?'Venta guardada · esperando señal':'Venta registrada'}</span></div>`}
-  if(c.state==='cancel')return `<div class="confirmc done"><h4>${esc(i.name)}</h4><span class="state">Venta cancelada</span></div>`;
-  if(!live(i))return `<div class="confirmc done"><h4>${esc(i.name)}</h4><span class="state">Ya no está disponible</span></div>`;
+  if(c.state==='done'){const s=S.sales.find(x=>x.id===c.sale);
+    const st=!s?'No se registró':s.void?'Anulada':s.pending?'Guardada · se enviará con señal':'Registrada';
+    return `<div class="receipt ${s&&s.void?'void':''}"><span class="ck">${s&&s.void?'×':'✓'}</span><div class="rmid"><b>${esc(i.name)}</b><span class="num">${s?clp.format(s.price)+' · '+s.method:''} · ${st}</span></div>${s&&!s.void&&!m.undone?`<button class="undo" data-undo="${m.id}">Deshacer</button>`:''}</div>`}
+  if(c.state==='cancel')return `<div class="receipt void"><span class="ck">×</span><div class="rmid"><b>${esc(i.name)}</b><span>Venta cancelada</span></div></div>`;
+  if(!live(i))return `<div class="receipt void"><span class="ck">×</span><div class="rmid"><b>${esc(i.name)}</b><span>Ya no está disponible</span></div></div>`;
   const min=i.min||i.price,below=c.price<min,free=!i.price;
   const opts=free?[]:[...new Set([i.price,Math.round((i.price+min)/2/1000)*1000,min])].filter(v=>v>=min&&v<=i.price);
-  return `<div class="confirmc"><h4>${esc(i.name)}</h4>
-    ${free?`<label class="f" style="margin:0">Precio acordado con el cliente<input class="cpin" data-cm="${m.id}" type="number" inputmode="numeric" min="1" step="1000" placeholder="Ej: 25000" value="${c.price||''}"></label>`:`<div class="opts">${opts.map((v,k)=>`<button class="opt num" data-cm="${m.id}" data-cprice="${v}" aria-pressed="${c.price===v}">${k===0?'Lista ':v===min&&k?'Mínimo ':''}${clp.format(v)}</button>`).join('')}</div>`}
-    ${below?`<div class="warn">${clp.format(c.price)} está bajo el mínimo autorizado (${clp.format(min)}). Elige un precio de arriba o consulta al dueño.</div>`:''}
-    <div class="opts">${['Efectivo','Tarjeta','Transferencia'].map(x=>`<button class="opt" data-cm="${m.id}" data-cmethod="${x}" aria-pressed="${c.method===x}">${x}</button>`).join('')}</div>
-    <div class="ctotal"><span class="state">Total</span><span class="price num" data-ctot="${m.id}">${clp.format(c.price||0)}</span></div>
-    <div class="btnrow"><button class="btn" data-cm="${m.id}" data-ccancel="1" style="flex:0 1 110px">Cancelar</button><button class="btn primary" data-cm="${m.id}" data-cok="1" ${below||!(c.price>0)?'disabled':''}>Confirmar venta</button></div></div>`;
+  return `<div class="checkout"><div class="cohead"><span class="thumb">${thumb(i)}</span><div class="mid"><b>${esc(i.name)}</b><span>${esc(i.type)}</span></div></div>
+    ${free?`<label class="f" style="margin:0">Precio acordado<input class="cpin" data-cm="${m.id}" type="number" inputmode="numeric" min="1" step="1000" placeholder="Ej: 25000" value="${c.price||''}"></label>`:opts.length>1?`<div class="opts">${opts.map((v,k)=>`<button class="opt num" data-cm="${m.id}" data-cprice="${v}" aria-pressed="${c.price===v}">${k===0?'Lista ':v===min?'Mínimo ':''}${clp.format(v)}</button>`).join('')}</div>`:''}
+    ${below?`<div class="warn">${clp.format(c.price)} está bajo el mínimo (${clp.format(min)}).</div>`:''}
+    <div class="seg3">${['Efectivo','Tarjeta','Transferencia'].map(x=>`<button data-cm="${m.id}" data-cmethod="${x}" aria-pressed="${c.method===x}">${x==='Transferencia'?'Transfer.':x}</button>`).join('')}</div>
+    <button class="btn primary paybtn" data-cm="${m.id}" data-cok="1" ${below||!(c.price>0)?'disabled':''}>Confirmar <span class="num" data-ctot="${m.id}">${clp.format(c.price||0)}</span></button>
+    <button class="link" data-cm="${m.id}" data-ccancel="1">Cancelar</button></div>`;
 }
-function msgHTML(m){
-  if(m.from==='me')return `<div class="msg me"><div class="bubble">${esc(m.text)}</div></div>`;
-  let h='<div class="msg bot">'+AP('av');
-  if(m.text)h+=`<p>${fmt(m.text)}</p>`;
-  if(m.items&&m.items.length){
-    const its=m.items.map(byId).filter(Boolean);
-    if(m.detail&&its.length===1)h+=bigHTML(its[0]);
-    else if(its.length){const lim=m.limit||99,shown=its.slice(0,lim);
-      h+=`<div class="stack">${shown.map(i=>{let x=cardHTML(i);
-        if(m.pick&&live(i))x=x.replace(`data-open="${i.id}"`,`data-picksell="${i.id}" data-cm="${m.id}"`);
-        if(m.pickHold!=null&&avail(i))x=x.replace(`data-open="${i.id}"`,`data-pickhold="${i.id}" data-cm="${m.id}"`);
-        return x}).join('')}</div>`;
-      if(its.length>lim)h+=`<button class="more" data-expand="${m.id}">Ver ${its.length-lim} más</button>`;}
-  }
+const words=t=>fmt(t).split(/(<[^>]+>|\s+)/).map(x=>/^<|^\s+$|^$/.test(x)?x:`<span class="w">${x}</span>`).join('');
+function msgHTML(m,fresh){
+  if(m.from==='me')return `<div class="msg me${fresh?' fresh':''}"><div class="bubble">${esc(m.text)}</div></div>`;
+  let h=`<div class="msg bot${fresh?' fresh':''}">`+AP('av')+'<div class="bcol">';
+  if(m.text)h+=`<p>${fresh?words(m.text):fmt(m.text)}</p>`;
+  h+=`<div class="payload">${itemsHTML(m)}`;
   if(m.confirm)h+=confirmHTML(m);
-  if(m.undo&&!m.undone){const sale=m.undo.sale&&S.sales.find(s=>s.id===m.undo.sale);const holdOk=m.undo.hold&&byId(m.undo.hold)?.status==='apart';
+  if(m.undo&&!m.undone&&!m.confirm){const sale=m.undo.sale&&S.sales.find(s=>s.id===m.undo.sale);const holdOk=m.undo.hold&&byId(m.undo.hold)?.status==='apart';
     if((sale&&!sale.void)||holdOk)h+=`<button class="undo" data-undo="${m.id}">Deshacer</button>`}
   if(m.copyReport)h+=`<div class="say"><button data-act="copyReport">Copiar resumen</button></div>`;
   if(m.editHint&&!S.seller)h+=`<div class="say"><button data-edit="${m.editHint}">Completar ficha</button></div>`;
-  if(m.say&&m.say.length)h+=`<div class="say">${m.say.map(s=>`<button data-say="${esc(s)}">${esc(s)}</button>`).join('')}</div>`;
-  return h+'</div>';
+  return h+'</div></div></div>';
+}
+function starters(){
+  const av=S.items.filter(avail),cams=av.filter(isCam),acc=av.filter(i=>!isCam(i));
+  const cnt=a=>a.reduce((x,i)=>x+i.qty,0);
+  const out=[];
+  const cheap=cams.filter(i=>i.price>0&&i.price<=50000);if(cheap.length)out.push(['Bajo $50.000',`${cnt(cheap)} cámaras`,'¿Qué hay bajo 50 lucas?']);
+  const types=CAM_TYPES.map(t=>[t,cams.filter(i=>i.type===t)]).filter(x=>x[1].length).sort((a,b)=>cnt(b[1])-cnt(a[1]));
+  for(const [t,l] of types.slice(0,2)){const lab=t==='Compacta'?'Análogas':t==='Digital'?'Digitales':PLURAL[t][0].toUpperCase()+PLURAL[t].slice(1);out.push([lab,`${cnt(l)} disponibles`,t==='Compacta'?'compactas':PLURAL[t]])}
+  if(acc.length)out.push(['Rollos y accesorios',`${cnt(acc)} unidades`,'accesorios']);
+  out.push(['Resumen del día',evSales().filter(s=>!s.void).length+' ventas','Resumen del día']);
+  return out.slice(0,4);
 }
 function renderHome(){
-  const held=S.items.filter(i=>i.status==='apart'&&live(i)).length;
   const first=(me.name||'').split(' ')[0];
-  let sub=`${nAvail()} cámaras disponibles${held?' · '+held+' apartadas':''}`;
-  if(!S.items.length)sub=S.seller?'El dueño todavía no carga cámaras.':'Tu inventario está vacío. Toca + para cargar tus cámaras.';
-  return `<div class="home">${AP('ap')}<div class="hi gtext">Hola${first?' '+esc(first):''}</div><h1>¿Qué busca el cliente?</h1><p class="num">${esc(sub)}</p></div>`;
+  let sub=`${nCam()} cámaras y ${nAcc()} accesorios disponibles`;
+  if(!S.items.length)sub=S.seller?'El dueño todavía no carga productos.':'Tu inventario está vacío. Toca + para cargar productos.';
+  const st=S.items.length?`<div class="starters">${starters().map(([a,b,q])=>`<button class="starter" data-say="${esc(q)}"><b>${esc(a)}</b><span class="num">${esc(b)}</span></button>`).join('')}</div>`:'';
+  return `<div class="home">${AP('ap')}<div class="hi gtext">Hola${first?' '+esc(first):''}</div><h1>¿Qué busca el cliente?</h1><p class="num">${esc(sub)}</p></div>${st}`;
 }
+let lastFresh=null;
 function renderChat(scroll=true){
   if(!me.role)return;
   const home=!chat.length;document.body.classList.toggle('home',home);
-  $('#chat').innerHTML=home?renderHome():chat.map(msgHTML).join('');
+  const last=chat[chat.length-1];const fresh=last&&last.id!==lastFresh&&scroll?last.id:null;
+  if(last)lastFresh=last.id;
+  $('#chat').innerHTML=home?renderHome():chat.map(m=>msgHTML(m,m.id===fresh)).join('');
+  if(fresh){const ws=[...document.querySelectorAll('.msg.fresh .w')];const step=Math.min(28,900/Math.max(1,ws.length));ws.forEach((w,k)=>w.style.animationDelay=(k*step)+'ms');
+    const pl=document.querySelector('.msg.fresh .payload');if(pl)pl.style.animationDelay=Math.min(900,ws.length*step)+'ms'}
   renderHeader();renderSugg();
-  if(scroll&&!home)requestAnimationFrame(()=>window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}));
+  if(scroll&&!home)requestAnimationFrame(()=>{const msgs=document.querySelectorAll('#chat .msg');const lm=msgs[msgs.length-1];const prev=msgs[msgs.length-2];
+    const target=(prev&&prev.classList.contains('me')?prev:lm);if(target)window.scrollTo({top:Math.max(0,target.getBoundingClientRect().top+window.scrollY-84),behavior:'smooth'})});
 }
 function renderHeader(){
   if(!me.role)return;
-  const ok=evSales().filter(s=>!s.void),tot=ok.reduce((a,s)=>a+s.price,0);
   $('#hName').textContent=S.event.name||'Puesto';
   const net=!online?`<span class="netpill off">Sin señal${outbox.length?' · '+outbox.length+' por enviar':''}</span>`:outbox.length?`<span class="netpill">Enviando ${outbox.length}</span>`:'';
-  $('#hStats').innerHTML=net?net+` <span class="num">${nAvail()} disp.</span>`:`<span class="num">${nCam()} cámaras${nAvail()-nCam()?' · '+(nAvail()-nCam())+' acc.':''} · <i>${clp.format(tot)}</i></span>${S.seller?' <span class="badge">Vendedor</span>':''}`;
-  $('#meAv').textContent=((me.name||me.email||'?').trim()[0]||'?').toUpperCase();
+  $('#hStats').innerHTML=(net?net+' ':'')+`<span class="num">${nCam()} cámaras · ${nAcc()} acc.</span>${S.seller?' <span class="badge">Vendedor</span>':''}`;
+  const av=$('#meAv');if(av)av.textContent=((me.name||me.email||'?').trim()[0]||'?').toUpperCase();
+}
+function nextSteps(){
+  const lastBot=[...chat].reverse().find(m=>m.from==='bot');
+  if(pending)return ['Cancelar'];
+  if(!S.items.length)return S.seller?[]:['Pegar lista','Ayuda'];
+  if(lastBot&&lastBot.say&&lastBot.say.length)return lastBot.say;
+  const last=ctx.last&&byId(ctx.last);
+  if(last&&live(last)){const s=[];if((last.min||last.price)<last.price)s.push('¿Cuánto puedo rebajar?');if(isCam(last))s.push('Algo más barato');s.push('Resumen del día','Ayuda');return s}
+  return defaultSay();
 }
 function renderSugg(){
-  let s;const last=ctx.last&&byId(ctx.last);
-  if(pending)s=['Cancelar'];
-  else if(!S.items.length)s=S.seller?[]:['Pegar lista','Ayuda'];
-  else if(last&&live(last))s=[`Mínimo de la ${brandOf(last.name)}`,'Algo más barato','Resumen del día','Ayuda'];
-  else s=defaultSay();
+  const s=document.body.classList.contains('home')?[]:nextSteps();
   $('#sugg').innerHTML=s.map(x=>`<button data-say="${esc(x)}">${esc(x)}</button>`).join('');
 }
 function after(){saveCache();renderChat()}
 function send(text){
   if(text==='Pegar lista'){if(!S.seller){openImport()}return}
-  if(text==='Ver todo'){meSay(text);const av=S.items.filter(live).sort((a,b)=>(avail(b)-avail(a))||a.price-b.price);bot({text:`Todo el listado (${av.length}):`,items:av.map(i=>i.id),limit:8});after();return}
-  if(text==='Algo más barato'&&ctx.last){const l=byId(ctx.last);meSay(text);const c=S.items.filter(i=>avail(i)&&i.price<l.price&&i.type===l.type).sort((a,b)=>b.price-a.price);
-    bot(c.length?{text:`${c.length===1?'Hay una':'Hay '+c.length} ${c.length>1?PLURAL[l.type]:l.type.toLowerCase()} más barata${c.length>1?'s':''}:`,items:c.map(i=>i.id),limit:6}:{text:`No hay ${PLURAL[l.type]} más baratas que esa.`});after();return}
-  const r=handle(text);saveCache();renderChatTyping();setTimeout(()=>renderChat(),260);
+  if(text==='Ver todo'){meSay(text);const av=S.items.filter(live).sort((a,b)=>(avail(b)-avail(a))||a.price-b.price);bot({text:`Todo el inventario: **${av.length} productos**.`,items:av.map(i=>i.id)});return thinking()}
+  if(text==='¿Cuánto puedo rebajar?'&&ctx.last){meSay(text);minIntent('minimo '+byId(ctx.last).name);return thinking()}
+  if(text==='Algo más barato'&&ctx.last){const l=byId(ctx.last);meSay(text);const c=S.items.filter(i=>avail(i)&&i.price>0&&i.price<l.price&&i.type===l.type).sort((a,b)=>b.price-a.price);
+    bot(c.length?{text:`${c.length===1?'Hay una':'Hay '+c.length} ${c.length>1?PLURAL[l.type]:l.type.toLowerCase()} más barata${c.length>1?'s':''} que la ${shortName(l)}:`,items:c.map(i=>i.id)}:{text:`No hay ${PLURAL[l.type]} más baratas que la ${shortName(l)}.`});return thinking()}
+  handle(text);thinking();
 }
+function thinking(){saveCache();renderChatTyping();setTimeout(()=>renderChat(),380)}
 function renderChatTyping(){
   document.body.classList.remove('home');
-  $('#chat').innerHTML=chat.slice(0,-1).map(msgHTML).join('')+'<div class="msg bot">'+AP('av')+'<div class="typing"><i></i><i></i><i></i></div></div>';
+  const msgs=chat.slice(0,-1);const me2=msgs[msgs.length-1];
+  $('#chat').innerHTML=msgs.map(m=>msgHTML(m,m===me2&&m.from==='me')).join('')+'<div class="msg bot">'+AP('av spin')+'<div class="bcol"><div class="typing"><i></i><i></i><i></i></div></div></div>';
+  $('#sugg').innerHTML='';
   requestAnimationFrame(()=>window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}));
+}
+function openList(id){
+  const m=msgById(id);if(!m)return;listIds=(m.items||[]).slice();listSort='rel';listTitle=(m.text||'Resultados').replace(/\*\*/g,'').replace(/[:.]\s*$/,'');renderList();openSheet('listSheet');$('#listBody').scrollTop=0;
+}
+let listIds=[],listSort='rel',listTitle='';
+function renderList(){
+  let its=listIds.map(byId).filter(Boolean);
+  if(listSort==='asc')its.sort((a,b)=>(a.price||9e9)-(b.price||9e9));if(listSort==='desc')its.sort((a,b)=>b.price-a.price);
+  $('#listTitle').textContent=listTitle;
+  $('#listSeg').innerHTML=[['rel','Relevancia'],['asc','Menor precio'],['desc','Mayor precio']].map(([k,l])=>`<button data-lsort="${k}" aria-pressed="${listSort===k}">${l}</button>`).join('');
+  $('#listBody').innerHTML=`<div class="rows">${its.map(i=>rowHTML(i)).join('')}</div>`;
 }
 
 /* ================= ficha ================= */
@@ -616,6 +661,8 @@ document.addEventListener('click',async e=>{
   if(d.release){const i=byId(d.release);closeSheet();doRelease(i);after();return}
   if(d.picksell){const m=msgById(d.cm);startSell(byId(d.picksell),m?.pick?.price,m?.pick?.method);after();return}
   if(d.pickhold){const m=msgById(d.cm),i=byId(d.pickhold);if(m.pickHold)doHold(i,m.pickHold);else askHold(i);after();return}
+  if(d.list){openList(d.list);return}
+  if(d.lsort){listSort=d.lsort;renderList();return}
   if(d.expand){const m=msgById(d.expand);m.limit=999;saveCache();renderChat(false);return}
   if(d.cm){const m=msgById(d.cm);if(!m||!m.confirm)return;
     if(d.cprice){m.confirm.price=+d.cprice;saveCache();renderChat(false);return}
@@ -675,11 +722,22 @@ document.addEventListener('click',async e=>{
     case 'backToLogin':authMode='in';showGate('auth');break;
   }
 });
-$('#composer').addEventListener('submit',e=>{e.preventDefault();const v=$('#msg').value.trim();if(!v)return;$('#msg').value='';$('#sendBtn').disabled=true;document.body.classList.remove('typing');send(v)});
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let rec=null;
+function syncComposer(){const has=!!$('#msg').value.trim();$('#sendBtn').hidden=!has&&!!SR;$('#micBtn').hidden=has||!SR;$('#sendBtn').disabled=!has}
+$('#micBtn').addEventListener('click',()=>{
+  if(rec){rec.stop();return}
+  try{rec=new SR();rec.lang='es-CL';rec.interimResults=true;rec.maxAlternatives=1}catch(e){toast('Tu navegador no permite dictar');return}
+  const b=$('#micBtn');b.classList.add('on');$('#msg').placeholder='Te escucho…';
+  rec.onresult=e=>{const r=[...e.results].map(x=>x[0].transcript).join('');$('#msg').value=r;if(e.results[e.results.length-1].isFinal){rec.stop()}};
+  rec.onerror=e=>{if(e.error==='not-allowed')toast('Permite el micrófono para dictar')};
+  rec.onend=()=>{b.classList.remove('on');$('#msg').placeholder='Pregunta o anota una venta';rec=null;const v=$('#msg').value.trim();if(v){$('#msg').value='';syncComposer();send(v)}};
+  rec.start();
+});
+$('#composer').addEventListener('submit',e=>{e.preventDefault();const v=$('#msg').value.trim();if(!v)return;$('#msg').value='';syncComposer();document.body.classList.remove('typing');send(v)});
 document.addEventListener('input',e=>{const el=e.target;if(!el.classList||!el.classList.contains('cpin'))return;const m=msgById(el.dataset.cm);if(!m)return;
   m.confirm.price=Math.round(+el.value)||0;const tot=document.querySelector(`[data-ctot="${m.id}"]`);if(tot)tot.textContent=clp.format(m.confirm.price);
   const ok=document.querySelector(`[data-cm="${m.id}"][data-cok]`);if(ok)ok.disabled=!(m.confirm.price>0);saveCache()});
-$('#msg').addEventListener('input',e=>{$('#sendBtn').disabled=!e.target.value.trim();document.body.classList.toggle('typing',!!e.target.value)});
+$('#msg').addEventListener('input',e=>{syncComposer();document.body.classList.toggle('typing',!!e.target.value)});syncComposer();
 $('#editForm').addEventListener('submit',e=>{e.preventDefault();document.querySelector('[data-act="saveItem"]').click()});
 document.addEventListener('change',async e=>{if(e.target.id==='evtInput'){const v=e.target.value.trim();if(!v)return;
   const ok=await ownerWrite(sb.from('settings').update({event_name:v}).eq('id',1).select().single(),'Evento renombrado');if(ok){base.settings=ok;derive();renderHeader()}}});
