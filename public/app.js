@@ -75,6 +75,7 @@ function derive(){
   S.seller=me.role!=='owner';
 }
 const byId=id=>S.items.find(i=>i.id===id);
+const ptxt=i=>i.price>0?clp.format(i.price):'Consultar precio';
 const live=i=>i&&i.qty>0;
 const avail=i=>live(i)&&i.status!=='apart';
 const evSales=()=>S.sales.filter(s=>s.eventStarted>=S.event.started);
@@ -83,7 +84,7 @@ const thumb=i=>i.photo?`<img src="${esc(i.photo)}" alt="" loading="lazy">`:sil(i
 const dot=i=>!live(i)?'<span class="dot bad">Vendida</span>':i.status==='apart'?'<span class="dot hold">Apartada</span>':`<span class="dot ok">${i.qty>1?i.qty+' disp.':'Disponible'}</span>`;
 
 /* ================= servidor ================= */
-const PERM={sold_out:'ya estaba vendida',below_min:'el precio quedó bajo el mínimo',forbidden:'no tienes permiso',not_found:'ya no existe en el inventario',bad_method:'medio de pago inválido'};
+const PERM={bad_price:'falta el precio',sold_out:'ya estaba vendida',below_min:'el precio quedó bajo el mínimo',forbidden:'no tienes permiso',not_found:'ya no existe en el inventario',bad_method:'medio de pago inválido'};
 const errCode=e=>{const m=String(e?.message||e||'');return Object.keys(PERM).find(k=>m.includes(k))||null};
 const isNet=e=>{const m=String(e?.message||e||'');return !errCode(e)&&(/fetch|network|Load failed|timeout|offline|ERR_/i.test(m)||!navigator.onLine)};
 
@@ -210,6 +211,7 @@ function match(a,pool){
   return pool.filter(i=>{
     if(a.type&&i.type!==a.type)return false;
     if(a.brand&&norm(brandOf(i.name))!==a.brand)return false;
+    if((a.max!=null||a.min!=null)&&!i.price)return false;
     if(a.max!=null&&i.price>a.max)return false;
     if(a.min!=null&&i.price<a.min)return false;
     if(a.beginner&&!['Réflex','Compacta','Telemétrica'].includes(i.type))return false;
@@ -324,6 +326,7 @@ function minIntent(t){
   const c=resolveItem(body,S.items.filter(live));
   if(c.length!==1){bot({text:c.length?'¿De cuál?':'¿De qué cámara? Dime la marca o el modelo.',items:c.map(i=>i.id),limit:6});return}
   const i=c[0];ctx.last=i.id;const min=i.min||i.price;
+  if(!i.price){bot({text:`La **${i.name}** aún no tiene precio. Consulta al dueño.`});return}
   bot({text:min<i.price?`La **${i.name}** está en ${clp.format(i.price)}. Puedes dejarla hasta en **${clp.format(min)}**.`:`La **${i.name}** tiene precio fijo: ${clp.format(i.price)}.`});
 }
 async function addIntent(text){
@@ -345,7 +348,7 @@ const defaultSay=()=>['¿Qué hay bajo 100 lucas?','Réflex para empezar','Compa
 /* ================= acciones ================= */
 function confirmSale(msg){
   const c=msg.confirm,i=byId(c.id);if(!live(i)||c.state!=='open')return;
-  const min=i.min||i.price;if(c.price<min)return;
+  const min=i.min||i.price;if(c.price<min||!(c.price>0))return;
   const op={kind:'sell',id:uuid(),item_id:i.id,name:i.name,list:i.price,price:c.price,method:c.method,sold_at:new Date().toISOString()};
   c.state='done';c.sale=op.id;enqueue(op);
   bot({text:`**Vendida.** ${i.name} en ${clp.format(op.price)} (${op.method.toLowerCase()}). Quedan ${nAvail()} disponibles.${online?'':' Sin señal: se enviará apenas vuelva.'}`,undo:{sale:op.id}});
@@ -360,10 +363,10 @@ function voidSale(id){
 }
 
 /* ================= render chat ================= */
-function cardHTML(i){return `<button class="card ${live(i)?'':'dim'}" data-open="${i.id}"><span class="thumb">${thumb(i)}</span><span class="mid"><span class="nm">${esc(i.name)}</span><span class="meta">${esc(i.type)} · ${esc(i.cond)}${i.status==='apart'&&i.holdFor&&live(i)?' · '+esc(i.holdFor):''}</span></span><span class="right"><span class="price num">${clp.format(i.price)}</span>${dot(i)}</span></button>`}
+function cardHTML(i){return `<button class="card ${live(i)?'':'dim'}" data-open="${i.id}"><span class="thumb">${thumb(i)}</span><span class="mid"><span class="nm">${esc(i.name)}</span><span class="meta">${esc(i.type)} · ${esc(i.cond)}${i.status==='apart'&&i.holdFor&&live(i)?' · '+esc(i.holdFor):''}</span></span><span class="right"><span class="price num${i.price>0?'':' np'}">${ptxt(i)}</span>${dot(i)}</span></button>`}
 function bigHTML(i){
   return `<div class="big"><button class="top" data-open="${i.id}"><span class="thumb">${thumb(i)}</span><span style="min-width:0;flex:1"><h4>${esc(i.name)}</h4><div class="meta">${esc(i.type)} · ${esc(i.cond)}</div></span></button>
-  <div class="pr"><span class="price num">${clp.format(i.price)}</span>${dot(i)}</div>
+  <div class="pr"><span class="price num${i.price>0?'':' np'}">${ptxt(i)}</span>${dot(i)}</div>
   ${i.pitch?`<div class="pitch">${esc(i.pitch)}</div>`:''}
   ${live(i)?`<div class="acts"><button class="btn primary" data-sell="${i.id}">Vender</button>${i.status==='apart'?`<button class="btn" data-release="${i.id}">Liberar</button>`:`<button class="btn" data-hold="${i.id}">Apartar</button>`}<button class="btn ghost" data-open="${i.id}" style="flex:0 0 auto">Ficha</button></div>`:''}</div>`;
 }
@@ -372,14 +375,14 @@ function confirmHTML(m){
   if(c.state==='done'){const s=S.sales.find(x=>x.id===c.sale);return `<div class="confirmc done"><h4>${esc(i.name)}</h4><span class="state">${!s?'Venta no registrada':s.void?'Venta registrada y luego anulada':s.pending?'Venta guardada · esperando señal':'Venta registrada'}</span></div>`}
   if(c.state==='cancel')return `<div class="confirmc done"><h4>${esc(i.name)}</h4><span class="state">Venta cancelada</span></div>`;
   if(!live(i))return `<div class="confirmc done"><h4>${esc(i.name)}</h4><span class="state">Ya no está disponible</span></div>`;
-  const min=i.min||i.price,below=c.price<min;
-  const opts=[...new Set([i.price,Math.round((i.price+min)/2/1000)*1000,min])].filter(v=>v>=min&&v<=i.price);
+  const min=i.min||i.price,below=c.price<min,free=!i.price;
+  const opts=free?[]:[...new Set([i.price,Math.round((i.price+min)/2/1000)*1000,min])].filter(v=>v>=min&&v<=i.price);
   return `<div class="confirmc"><h4>${esc(i.name)}</h4>
-    <div class="opts">${opts.map((v,k)=>`<button class="opt num" data-cm="${m.id}" data-cprice="${v}" aria-pressed="${c.price===v}">${k===0?'Lista ':v===min&&k?'Mínimo ':''}${clp.format(v)}</button>`).join('')}</div>
+    ${free?`<label class="f" style="margin:0">Precio acordado con el cliente<input class="cpin" data-cm="${m.id}" type="number" inputmode="numeric" min="1" step="1000" placeholder="Ej: 25000" value="${c.price||''}"></label>`:`<div class="opts">${opts.map((v,k)=>`<button class="opt num" data-cm="${m.id}" data-cprice="${v}" aria-pressed="${c.price===v}">${k===0?'Lista ':v===min&&k?'Mínimo ':''}${clp.format(v)}</button>`).join('')}</div>`}
     ${below?`<div class="warn">${clp.format(c.price)} está bajo el mínimo autorizado (${clp.format(min)}). Elige un precio de arriba o consulta al dueño.</div>`:''}
     <div class="opts">${['Efectivo','Tarjeta','Transferencia'].map(x=>`<button class="opt" data-cm="${m.id}" data-cmethod="${x}" aria-pressed="${c.method===x}">${x}</button>`).join('')}</div>
-    <div class="ctotal"><span class="state">Total</span><span class="price num">${clp.format(c.price)}</span></div>
-    <div class="btnrow"><button class="btn" data-cm="${m.id}" data-ccancel="1" style="flex:0 1 110px">Cancelar</button><button class="btn primary" data-cm="${m.id}" data-cok="1" ${below?'disabled':''}>Confirmar venta</button></div></div>`;
+    <div class="ctotal"><span class="state">Total</span><span class="price num" data-ctot="${m.id}">${clp.format(c.price||0)}</span></div>
+    <div class="btnrow"><button class="btn" data-cm="${m.id}" data-ccancel="1" style="flex:0 1 110px">Cancelar</button><button class="btn primary" data-cm="${m.id}" data-cok="1" ${below||!(c.price>0)?'disabled':''}>Confirmar venta</button></div></div>`;
 }
 function msgHTML(m){
   if(m.from==='me')return `<div class="msg me"><div class="bubble">${esc(m.text)}</div></div>`;
@@ -457,7 +460,7 @@ function renderItem(){
   $('#itemBody').innerHTML=`<div class="hero">${i.photo?`<img src="${esc(i.photo)}" alt="${esc(i.name)}">`:sil(i.type)}</div>
     <div class="dtitle">${esc(i.name)}</div><div>${dot(i)}</div>
     ${i.status==='apart'&&i.holdFor&&live(i)?`<div class="note" style="margin-top:10px;background:var(--hold-bg);border-color:transparent"><b>Apartada:</b> ${esc(i.holdFor)}</div>`:''}
-    <div class="pricebox"><div><small>Precio</small><span class="price num">${clp.format(i.price)}</span></div>${min<i.price?`<button class="reveal" data-act="toggleMin">${showMin?`Mínimo<b class="num">${clp.format(min)}</b>`:'Ver mínimo'}</button>`:'<small>Precio fijo</small>'}</div>
+    <div class="pricebox"><div><small>Precio</small><span class="price num${i.price>0?'':' np'}">${ptxt(i)}</span></div>${i.price===0?'<small>Pregunta al dueño</small>':min<i.price?`<button class="reveal" data-act="toggleMin">${showMin?`Mínimo<b class="num">${clp.format(min)}</b>`:'Ver mínimo'}</button>`:'<small>Precio fijo</small>'}</div>
     ${i.pitch?`<div class="pitchbox"><small>Qué decirle al cliente</small><p>${esc(i.pitch)}</p></div>`:''}
     ${i.tested.length?`<h3>Probado y funcionando</h3><div class="checks">${i.tested.map(t=>`<span>✓ ${esc(t)}</span>`).join('')}</div>`:''}
     ${i.notes?`<h3>Detalles y defectos</h3><div class="note">${esc(i.notes)}</div>`:''}
@@ -484,7 +487,7 @@ function renderMenu(){
     h=`<div class="btnrow"><button class="btn primary" data-act="newItem">+ Agregar cámara</button><button class="btn" data-act="openImport">Pegar lista</button></div>
       <p class="hint">También puedes escribir en el chat: “agrega Nikon F3 350 lucas mínimo 320”.</p>
       <h3>${items.length} productos · ${nAvail()} disponibles</h3>
-      <div class="list">${items.map(i=>`<div class="row"><span class="thumb">${thumb(i)}</span><button class="info" data-edit="${i.id}"><b>${esc(i.name)}</b><span class="num">${clp.format(i.price)} · mín. ${clp.format(i.min||i.price)}${i.status==='apart'&&live(i)?' · apartada':''}</span></button><div class="step"><button data-dec="${i.id}" aria-label="Restar unidad">−</button><output class="num" style="color:var(--${i.qty<=0?'bad':'ink'})">${i.qty}</output><button data-inc="${i.id}" aria-label="Sumar unidad">+</button></div></div>`).join('')||'<div class="empty">Aún no hay cámaras.</div>'}</div>`;
+      <div class="list">${items.map(i=>`<div class="row"><span class="thumb">${thumb(i)}</span><button class="info" data-edit="${i.id}"><b>${esc(i.name)}</b><span class="num">${i.price>0?clp.format(i.price)+' · mín. '+clp.format(i.min||i.price):'Sin precio'}${i.status==='apart'&&live(i)?' · apartada':''}</span></button><div class="step"><button data-dec="${i.id}" aria-label="Restar unidad">−</button><output class="num" style="color:var(--${i.qty<=0?'bad':'ink'})">${i.qty}</output><button data-inc="${i.id}" aria-label="Sumar unidad">+</button></div></div>`).join('')||'<div class="empty">Aún no hay cámaras.</div>'}</div>`;
   }else if(menuTab==='ventas'){
     const all=evSales(),ok=all.filter(s=>!s.void),tot=ok.reduce((a,s)=>a+s.price,0),by=m=>ok.filter(s=>s.method===m).reduce((a,s)=>a+s.price,0),disc=ok.reduce((a,s)=>a+Math.max(0,s.list-s.price),0);
     const who=id=>{const m=base.members.find(x=>x.user_id===id);return m?(m.user_id===me.id?'tú':(m.name||(m.role==='owner'?'dueño':'vendedor'))):''};
@@ -618,9 +621,9 @@ document.addEventListener('click',async e=>{
     case 'saveItem':{
       const name=$('#eName').value.trim(),price=Math.round(+$('#ePrice').value),qty=Math.round(+$('#eQty').value),minRaw=$('#eMin').value;
       if(!name){toast('Falta marca y modelo');$('#eName').focus();break}
-      if(!(price>0)){toast('Falta el precio de venta');$('#ePrice').focus();break}
+      if(!(price>=0)||$('#ePrice').value===''){toast('Falta el precio de venta (0 = sin precio)');$('#ePrice').focus();break}
       if(!(qty>=0)||$('#eQty').value===''){toast('Revisa las unidades');$('#eQty').focus();break}
-      const min=minRaw===''?price:Math.round(+minRaw);if(!(min>0)||min>price){toast('El mínimo debe estar entre 1 y el precio');$('#eMin').focus();break}
+      const min=minRaw===''?price:Math.round(+minRaw);if(!(min>=0)||min>price){toast('El mínimo no puede ser mayor que el precio');$('#eMin').focus();break}
       t.disabled=true;let photo=ePhoto;
       if(ePhotoBlob){try{photo=await uploadPhoto(ePhotoBlob)}catch(err){toast(isNet(err)?'Necesitas señal para subir la foto':'No se pudo subir la foto');t.disabled=false;break}}
       const row={name,price,min_price:min,qty,type:$('#eType').value,cond:$('#eCond').value,tested:eTests,pitch:$('#ePitch').value.trim(),notes:$('#eNotes').value.trim(),photo_url:photo.startsWith('data:')?'':photo};
@@ -647,6 +650,9 @@ document.addEventListener('click',async e=>{
   }
 });
 $('#composer').addEventListener('submit',e=>{e.preventDefault();const v=$('#msg').value.trim();if(!v)return;$('#msg').value='';$('#sendBtn').disabled=true;document.body.classList.remove('typing');send(v)});
+document.addEventListener('input',e=>{const el=e.target;if(!el.classList||!el.classList.contains('cpin'))return;const m=msgById(el.dataset.cm);if(!m)return;
+  m.confirm.price=Math.round(+el.value)||0;const tot=document.querySelector(`[data-ctot="${m.id}"]`);if(tot)tot.textContent=clp.format(m.confirm.price);
+  const ok=document.querySelector(`[data-cm="${m.id}"][data-cok]`);if(ok)ok.disabled=!(m.confirm.price>0);saveCache()});
 $('#msg').addEventListener('input',e=>{$('#sendBtn').disabled=!e.target.value.trim();document.body.classList.toggle('typing',!!e.target.value)});
 $('#editForm').addEventListener('submit',e=>{e.preventDefault();document.querySelector('[data-act="saveItem"]').click()});
 document.addEventListener('change',async e=>{if(e.target.id==='evtInput'){const v=e.target.value.trim();if(!v)return;

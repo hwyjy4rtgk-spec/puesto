@@ -224,3 +224,5 @@ p.hint{font-size:13.5px;color:var(--muted);margin:8px 0 0}
 .netpill.off{background:var(--bad-bg);color:var(--bad)}
 .codebox{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--tint);border-radius:16px;padding:14px 16px}
 .codebox b{font-size:28px;letter-spacing:.2em;font-weight:600}
+
+.price.np{font-size:14px!important;font-weight:500;color:var(--hold)}
