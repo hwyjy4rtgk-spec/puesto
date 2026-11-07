@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="styles.css?v=5">
+<link rel="stylesheet" href="styles.css?v=6">
 <style>
 :root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 *,*::before,*::after{box-sizing:border-box}
@@ -95,9 +95,10 @@ img{max-width:100%}
   <div class="grab"></div>
   <div class="sh pad"><h2 id="editTitle">Cámara</h2><button class="icon-btn" data-act="closeSheet" aria-label="Cerrar"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
   <form class="sb pad" id="editForm">
-    <label class="f">Marca y modelo<input id="eName" autocomplete="off" required placeholder="Ej: Canon AE-1 Program + 50 mm f/1.8"></label>
+    <label class="f">Marca y modelo / nombre<input id="eName" autocomplete="off" required placeholder="Ej: Canon AE-1 Program + 50 mm f/1.8"></label>
     <div class="two"><label class="f">Tipo<select id="eType"></select></label><label class="f">Estado<select id="eCond"></select></label></div>
     <div class="two"><label class="f">Precio de venta<input id="ePrice" type="number" inputmode="numeric" min="0" step="1000" required></label><label class="f">Precio mínimo<input id="eMin" type="number" inputmode="numeric" min="0" step="1000"><small>Hasta dónde puede rebajar</small></label></div>
+    <label class="f">Sirve para (accesorios)<input id="eCompat" autocomplete="off" placeholder="Ej: Instax Mini, Canon EF, Olympus FE-230"><small>Déjalo vacío si es una cámara</small></label>
     <label class="f" style="max-width:50%">Unidades<input id="eQty" type="number" inputmode="numeric" min="0" step="1" required></label>
     <div class="photo"><div class="thumb" id="eThumb"></div><div style="min-width:0"><p>Opcional. Sin foto se usa la ilustración del tipo.</p><div class="btnrow"><label class="btn" for="ePhoto" style="cursor:pointer;flex:0 0 auto;height:40px">Tomar foto</label><button type="button" class="btn" data-act="rmPhoto" id="rmPhoto" style="flex:0 0 auto;height:40px">Quitar</button></div><input id="ePhoto" type="file" accept="image/*" capture="environment" hidden></div></div>
     <div style="font-weight:600;font-size:13px;color:var(--ink-2);margin-bottom:6px">Probado y funcionando</div>
@@ -122,8 +123,8 @@ img{max-width:100%}
 
 <div class="toast" id="toast" role="status"></div>
 </div>
-<script src="vendor/supabase.js?v=5"></script>
-<script src="config.js?v=5"></script>
-<script src="app.js?v=5"></script>
+<script src="vendor/supabase.js?v=6"></script>
+<script src="config.js?v=6"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>

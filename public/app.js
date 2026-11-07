@@ -9,8 +9,11 @@ const CFG=window.PUESTO_CONFIG;
 const sb=window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
 const CACHE='puesto.cache.v1';
 
-const TYPES=['Réflex','Compacta','Telemétrica','Formato medio','Instantánea','Digital','Lente','Película','Accesorio'];
-const PLURAL={'Réflex':'réflex','Compacta':'compactas','Telemétrica':'telemétricas','Formato medio':'de formato medio','Instantánea':'instantáneas','Digital':'digitales','Lente':'lentes','Película':'rollos','Accesorio':'accesorios'};
+const CAM_TYPES=['Réflex','Compacta','Telemétrica','Formato medio','Instantánea','Digital'];
+const ACC_TYPES=['Película','Batería','Cargador','Memoria','Lente','Flash','Funda','Correa','Trípode','Cable','Accesorio'];
+const TYPES=[...CAM_TYPES,...ACC_TYPES];
+const isCam=i=>CAM_TYPES.includes(i.type);
+const PLURAL={'Réflex':'réflex','Compacta':'compactas','Telemétrica':'telemétricas','Formato medio':'de formato medio','Instantánea':'instantáneas','Digital':'digitales','Lente':'lentes','Película':'rollos','Batería':'baterías','Cargador':'cargadores','Memoria':'memorias','Flash':'flashes','Funda':'fundas','Correa':'correas','Trípode':'trípodes','Cable':'cables','Accesorio':'accesorios'};
 const CONDS=['Como nueva','Excelente','Muy buena','Buena','Con detalles','Para repuesto'];
 const TESTS=['Obturador','Fotómetro','Flash','Enciende','Enfoque','Óptica limpia','Probada con rollo','Sellos nuevos'];
 const clp=new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0});
@@ -30,13 +33,29 @@ const SIL={
  'Digital':'<rect x="7" y="13" width="50" height="24" rx="4"/><circle cx="40" cy="25" r="7"/><circle cx="40" cy="25" r="3"/><rect x="13" y="17" width="8" height="4" rx="1"/><path d="M14 13v-2h8v2"/>',
  'Lente':'<rect x="12" y="10" width="40" height="24" rx="3"/><path d="M20 10v24M28 10v24"/><ellipse cx="52" cy="22" rx="3" ry="12"/>',
  'Película':'<rect x="16" y="10" width="22" height="26" rx="3"/><path d="M21 10V6h12v4M38 16h14v14H38"/><path d="M41 19v2M45 19v2M49 19v2M41 27v-2M45 27v-2M49 27v-2"/>',
- 'Accesorio':'<rect x="16" y="14" width="32" height="20" rx="4"/><path d="M22 14v-4h20v4"/><circle cx="32" cy="24" r="5"/>'
+ 'Accesorio':'<rect x="16" y="14" width="32" height="20" rx="4"/><path d="M22 14v-4h20v4"/><circle cx="32" cy="24" r="5"/>',
+ 'Batería':'<rect x="12" y="13" width="38" height="18" rx="3"/><path d="M50 18h3v8h-3M18 22h8M22 18v8M38 22h6"/>',
+ 'Cargador':'<rect x="14" y="10" width="28" height="24" rx="4"/><path d="M42 22h8M50 18v8M24 16l-3 7h6l-3 7"/>',
+ 'Memoria':'<path d="M20 6h18l8 8v24H20z"/><path d="M25 6v7M30 6v7M35 6v7"/>',
+ 'Flash':'<rect x="18" y="20" width="28" height="16" rx="2"/><rect x="20" y="6" width="24" height="12" rx="2"/><path d="M34 9l-4 5h5l-4 5"/>',
+ 'Funda':'<path d="M12 16h40v20a4 4 0 0 1-4 4H16a4 4 0 0 1-4-4z"/><path d="M12 16l6-8h28l6 8M28 24h8"/>',
+ 'Correa':'<path d="M6 30c10-14 42-14 52 0"/><rect x="2" y="28" width="8" height="6" rx="1"/><rect x="54" y="28" width="8" height="6" rx="1"/>',
+ 'Trípode':'<rect x="24" y="4" width="16" height="8" rx="2"/><path d="M32 12v8M32 20 18 40M32 20v20M32 20l14 20"/>',
+ 'Cable':'<path d="M8 30c10 0 10-16 22-16s12 16 26 16"/><rect x="2" y="27" width="8" height="6" rx="1"/><rect x="54" y="27" width="8" height="6" rx="1"/>'
 };
 const sil=t=>`<svg viewBox="0 0 64 44" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SIL[t]||SIL['Accesorio']}</svg>`;
 function guessType(n){const s=norm(n);
+  if(/bateria|pila|battery/.test(s))return 'Batería';
+  if(/cargador|charger/.test(s))return 'Cargador';
+  if(/memoria|tarjeta|sdhc|sdxc|microsd|compactflash|xd|memorystick/.test(s))return 'Memoria';
+  if(/funda|estuche|bolso|mochila|case/.test(s))return 'Funda';
+  if(/correa|strap/.test(s))return 'Correa';
+  if(/tripode|tripod|monopie/.test(s))return 'Trípode';
+  if(/cable|usb/.test(s))return 'Cable';
+  if(/speedlite|flashexterno|^flash/.test(s))return 'Flash';
+  if(/rollo|pelicula|portra|iso\d|\bfilm\b/.test(s.replace(/fujifilm/g,''))||/(^|[^a-z])(film|rollo|pelicula)/.test(n.toLowerCase().replace(/fujifilm/g,'')))return 'Película';
   if(/polaroid|instax|onestep|sx70/.test(s))return 'Instantánea';
   if(/cybershot|coolpix|powershot|ixus|lumix|finepix|exilim|digital/.test(s))return 'Digital';
-  if(/rollo|pelicula|film|portra|iso\d/.test(s))return 'Película';
   if(/yashicamat|rolleicord|rolleiflex|mamiya|hasselblad|bronica|lubitel|seagull|holga|diana/.test(s))return 'Formato medio';
   if(/electro35|canonet|leica[mq]|zorki|fed\d|kiev|olympus35|olympusrc/.test(s))return 'Telemétrica';
   if(/mju|stylus|sureshot|prima|autoboy|olympusxa|ricohgr|konicac35|zoom/.test(s))return 'Compacta';
@@ -56,7 +75,7 @@ function loadCache(){try{const c=JSON.parse(localStorage.getItem(CACHE)||'null')
 function saveCache(){try{chat=chat.slice(-80);localStorage.setItem(CACHE,JSON.stringify({base,me,outbox,chat}))}catch(e){}}
 function clearCache(){try{localStorage.removeItem(CACHE)}catch(e){}}
 
-const vItem=r=>({id:r.id,name:r.name,type:r.type,cond:r.cond,price:r.price,min:r.min_price,qty:r.qty,tested:r.tested||[],pitch:r.pitch||'',notes:r.notes||'',photo:r.photo_url||'',status:r.status,holdFor:r.hold_for||''});
+const vItem=r=>({compatible:r.compatible||'',id:r.id,name:r.name,type:r.type,cond:r.cond,price:r.price,min:r.min_price,qty:r.qty,tested:r.tested||[],pitch:r.pitch||'',notes:r.notes||'',photo:r.photo_url||'',status:r.status,holdFor:r.hold_for||''});
 const vSale=r=>({id:r.id,itemId:r.item_id,name:r.name,list:r.list_price,price:r.price,method:r.method,ts:Date.parse(r.sold_at),void:!!r.voided,sellerId:r.seller_id,eventStarted:Date.parse(r.event_started),pending:!!r.pending});
 function derive(){
   const items=new Map(base.items.map(r=>[r.id,{...r}]));
@@ -80,6 +99,7 @@ const live=i=>i&&i.qty>0;
 const avail=i=>live(i)&&i.status!=='apart';
 const evSales=()=>S.sales.filter(s=>s.eventStarted>=S.event.started);
 const nAvail=()=>S.items.filter(avail).reduce((a,i)=>a+i.qty,0);
+const nCam=()=>S.items.filter(i=>avail(i)&&isCam(i)).reduce((a,i)=>a+i.qty,0);
 const thumb=i=>i.photo?`<img src="${esc(i.photo)}" alt="" loading="lazy">`:sil(i.type);
 const dot=i=>!live(i)?'<span class="dot bad">Vendida</span>':i.status==='apart'?'<span class="dot hold">Apartada</span>':`<span class="dot ok">${i.qty>1?i.qty+' disp.':'Disponible'}</span>`;
 
@@ -166,7 +186,7 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState===
 
 /* ================= lenguaje ================= */
 const STOP=new Set('tienes tiene tenemos tengo hay alguna alguno algun algo una uno un la el lo los las de del que quiero quiere busca busco buscan cliente clienta camara camaras me muestra muestrame ver precio cuanto cuesta vale sale y con para en por a o al tu su esta este esa ese estas esos sus mas menos queda quedan hola porfa favor si no e oye dame dime cual cuales q k le se es son hay'.split(' '));
-const TYPEW=[[/^(reflex|slr|reflexs)$/,'Réflex'],[/^(compactas?|bolsillo|pointandshoot)$/,'Compacta'],[/^(telemetricas?|rangefinders?)$/,'Telemétrica'],[/^(instantaneas?|instax)$/,'Instantánea'],[/^(digitales|digital)$/,'Digital'],[/^(lentes?|objetivos?)$/,'Lente'],[/^(rollos?|peliculas?|film|films)$/,'Película'],[/^(tlr)$/,'Formato medio'],[/^(accesorios?)$/,'Accesorio']];
+const TYPEW=[[/^(reflex|slr|reflexs)$/,'Réflex'],[/^(compactas?|bolsillo|pointandshoot)$/,'Compacta'],[/^(telemetricas?|rangefinders?)$/,'Telemétrica'],[/^(instantaneas?|instax)$/,'Instantánea'],[/^(digitales|digital)$/,'Digital'],[/^(lentes?|objetivos?)$/,'Lente'],[/^(rollos?|peliculas?|film|films)$/,'Película'],[/^(tlr)$/,'Formato medio'],[/^(baterias?|pilas?)$/,'Batería'],[/^(cargadores?)$/,'Cargador'],[/^(memorias?|tarjetas?|sd)$/,'Memoria'],[/^(fundas?|estuches?|bolsos?)$/,'Funda'],[/^(correas?)$/,'Correa'],[/^(tripodes?)$/,'Trípode'],[/^(cables?)$/,'Cable'],[/^(flash|flashes)$/,'Flash']];
 const METH=[[/efectivo|cash|plata|billete/,'Efectivo'],[/tarjeta|debito|credito|redcompra|pos\b/,'Tarjeta'],[/transfer/,'Transferencia']];
 const NUMRE=/(?<![\w-])(\$\s*)?(\d{1,3}(?:[.\s]\d{3})+|\d+(?:[.,]\d+)?)\s*(lucas?|mil|k|palos?)?(?![\w-])/gi;
 function toCLP(num,unit){let n=parseFloat(String(num).replace(/[.\s](?=\d{3}\b)/g,'').replace(',','.'));if(isNaN(n))return NaN;
@@ -215,7 +235,7 @@ function match(a,pool){
     if(a.max!=null&&i.price>a.max)return false;
     if(a.min!=null&&i.price<a.min)return false;
     if(a.beginner&&!['Réflex','Compacta','Telemétrica'].includes(i.type))return false;
-    const nm=norm(i.name);return a.toks.every(t=>nm.includes(t));
+    const nm=norm(i.name+' '+(i.compatible||''));return a.toks.every(t=>nm.includes(t));
   }).sort((x,y)=>{
     if(a.beginner){const bx=/empezar|aprender|automatic/.test(deac(x.pitch))?0:1,by=/empezar|aprender|automatic/.test(deac(y.pitch))?0:1;if(bx!==by)return bx-by}
     return (avail(y)-avail(x))||(a.max!=null||a.min!=null?x.price-y.price:0)||x.name.localeCompare(y.name)});
@@ -256,6 +276,10 @@ function handle(raw){
   if(/^(agrega|agregar|anade|anadir|nueva|nuevo|ingresa|ingresar)\b/.test(t)){addIntent(text);return}
   if(!S.items.length){bot({text:S.seller?'El dueño todavía no carga cámaras. Cuando lo haga aparecen aquí al instante.':'Tu inventario está vacío. Escríbeme “agrega Nikon F3 350 lucas mínimo 320” o toca **+** para pegar tu lista entera.',say:S.seller?[]:['Pegar lista']});return}
   if(/\b(minimo|cuanto (le )?puedo (bajar|rebajar|dejar)|ultimo precio|rebaja|descuento)\b/.test(t)){minIntent(t);return}
+  if(/^(accesorios?|que accesorios|insumos|otros productos)\b/.test(t)||/\b(accesorios|insumos)\b/.test(t)&&!/agrega/.test(t)){const a=S.items.filter(i=>!isCam(i)&&live(i));
+    if(!a.length){bot({text:'No hay accesorios cargados todavía.'});return}
+    const by=ACC_TYPES.map(k=>[k,a.filter(i=>i.type===k).reduce((x,i)=>x+i.qty,0)]).filter(x=>x[1]);
+    const na=a.reduce((x,i)=>x+i.qty,0);bot({text:`Hay **${na} ${na===1?'accesorio':'accesorios'}**: ${by.map(([k,n])=>n+' '+(n===1?k.toLowerCase():PLURAL[k])).join(', ')}.`,items:a.map(i=>i.id),limit:8});return}
   if(/\bapartad/.test(t)){const h=S.items.filter(i=>i.status==='apart'&&live(i));bot(h.length?{text:`Hay **${h.length}** ${h.length===1?'apartada':'apartadas'}:`,items:h.map(i=>i.id)}:{text:'No hay cámaras apartadas.'});return}
   find(t);
 }
@@ -276,7 +300,8 @@ function find(t){
 function overview(){
   const av=S.items.filter(avail);const by=TYPES.map(t=>[t,av.filter(i=>i.type===t).reduce((a,i)=>a+i.qty,0)]).filter(x=>x[1]);
   if(!by.length){bot({text:'No quedan cámaras disponibles.'});return}
-  bot({text:`Quedan **${nAvail()} disponibles**: ${by.map(([t,n])=>`${n} ${n===1?t.toLowerCase():PLURAL[t].replace(/^de /,'')}`).join(', ')}.`,say:by.slice(0,5).map(([t])=>t==='Película'?'Rollos':t==='Formato medio'?'Formato medio':PLURAL[t].charAt(0).toUpperCase()+PLURAL[t].slice(1)).concat(['Ver todo'])});
+  const accN=S.items.filter(i=>avail(i)&&!isCam(i)).reduce((a,i)=>a+i.qty,0),camN=nAvail()-accN;
+  bot({text:`Quedan **${camN} ${camN===1?'cámara':'cámaras'}**${accN?` y **${accN} ${accN===1?'accesorio':'accesorios'}**`:''}: ${by.map(([t,n])=>`${n} ${n===1?t.toLowerCase():PLURAL[t].replace(/^de /,'')}`).join(', ')}.`,say:by.slice(0,5).map(([t])=>t==='Película'?'Rollos':t==='Formato medio'?'Formato medio':PLURAL[t].charAt(0).toUpperCase()+PLURAL[t].slice(1)).concat(['Ver todo'])});
 }
 function help(){bot({text:'Escríbeme como le hablarías a un compañero. Por ejemplo:',say:['¿Tienes Canon?','Algo bajo 100 lucas','Réflex para empezar','Vendí la Pentax en 200 efectivo','Aparta la Olympus para Diego','Resumen del día']})}
 function summary(){
@@ -363,7 +388,7 @@ function voidSale(id){
 }
 
 /* ================= render chat ================= */
-function cardHTML(i){return `<button class="card ${live(i)?'':'dim'}" data-open="${i.id}"><span class="thumb">${thumb(i)}</span><span class="mid"><span class="nm">${esc(i.name)}</span><span class="meta">${esc(i.type)} · ${esc(i.cond)}${i.status==='apart'&&i.holdFor&&live(i)?' · '+esc(i.holdFor):''}</span></span><span class="right"><span class="price num${i.price>0?'':' np'}">${ptxt(i)}</span>${dot(i)}</span></button>`}
+function cardHTML(i){return `<button class="card ${live(i)?'':'dim'}" data-open="${i.id}"><span class="thumb">${thumb(i)}</span><span class="mid"><span class="nm">${esc(i.name)}</span><span class="meta">${esc(i.type)}${i.compatible?' · para '+esc(i.compatible):' · '+esc(i.cond)}${i.status==='apart'&&i.holdFor&&live(i)?' · '+esc(i.holdFor):''}</span></span><span class="right"><span class="price num${i.price>0?'':' np'}">${ptxt(i)}</span>${dot(i)}</span></button>`}
 function bigHTML(i){
   return `<div class="big"><button class="top" data-open="${i.id}"><span class="thumb">${thumb(i)}</span><span style="min-width:0;flex:1"><h4>${esc(i.name)}</h4><div class="meta">${esc(i.type)} · ${esc(i.cond)}</div></span></button>
   <div class="pr"><span class="price num${i.price>0?'':' np'}">${ptxt(i)}</span>${dot(i)}</div>
@@ -425,7 +450,7 @@ function renderHeader(){
   const ok=evSales().filter(s=>!s.void),tot=ok.reduce((a,s)=>a+s.price,0);
   $('#hName').textContent=S.event.name||'Puesto';
   const net=!online?`<span class="netpill off">Sin señal${outbox.length?' · '+outbox.length+' por enviar':''}</span>`:outbox.length?`<span class="netpill">Enviando ${outbox.length}</span>`:'';
-  $('#hStats').innerHTML=net?net+` <span class="num">${nAvail()} disp.</span>`:`<span class="num">${nAvail()} disponibles · <i>${clp.format(tot)}</i></span>${S.seller?' <span class="badge">Vendedor</span>':''}`;
+  $('#hStats').innerHTML=net?net+` <span class="num">${nAvail()} disp.</span>`:`<span class="num">${nCam()} cámaras${nAvail()-nCam()?' · '+(nAvail()-nCam())+' acc.':''} · <i>${clp.format(tot)}</i></span>${S.seller?' <span class="badge">Vendedor</span>':''}`;
   $('#meAv').textContent=((me.name||me.email||'?').trim()[0]||'?').toUpperCase();
 }
 function renderSugg(){
@@ -461,6 +486,7 @@ function renderItem(){
     <div class="dtitle">${esc(i.name)}</div><div>${dot(i)}</div>
     ${i.status==='apart'&&i.holdFor&&live(i)?`<div class="note" style="margin-top:10px;background:var(--hold-bg);border-color:transparent"><b>Apartada:</b> ${esc(i.holdFor)}</div>`:''}
     <div class="pricebox"><div><small>Precio</small><span class="price num${i.price>0?'':' np'}">${ptxt(i)}</span></div>${i.price===0?'<small>Pregunta al dueño</small>':min<i.price?`<button class="reveal" data-act="toggleMin">${showMin?`Mínimo<b class="num">${clp.format(min)}</b>`:'Ver mínimo'}</button>`:'<small>Precio fijo</small>'}</div>
+    ${i.compatible?`<div class="note" style="margin-top:12px"><b>Sirve para:</b> ${esc(i.compatible)}</div>`:''}
     ${i.pitch?`<div class="pitchbox"><small>Qué decirle al cliente</small><p>${esc(i.pitch)}</p></div>`:''}
     ${i.tested.length?`<h3>Probado y funcionando</h3><div class="checks">${i.tested.map(t=>`<span>✓ ${esc(t)}</span>`).join('')}</div>`:''}
     ${i.notes?`<h3>Detalles y defectos</h3><div class="note">${esc(i.notes)}</div>`:''}
@@ -522,7 +548,7 @@ function openEdit(i){
   $('#eName').value=i?.name||'';$('#eQty').value=i?.qty??1;
   $('#eType').innerHTML=TYPES.map(t=>`<option ${t===(i?.type||'Réflex')?'selected':''}>${t}</option>`).join('');
   $('#eCond').innerHTML=CONDS.map(t=>`<option ${t===(i?.cond||'Muy buena')?'selected':''}>${t}</option>`).join('');
-  $('#ePrice').value=i?.price??'';$('#eMin').value=i?.min??'';$('#ePitch').value=i?.pitch||'';$('#eNotes').value=i?.notes||'';
+  $('#eCompat').value=i?.compatible||'';$('#ePrice').value=i?.price??'';$('#eMin').value=i?.min??'';$('#ePitch').value=i?.pitch||'';$('#eNotes').value=i?.notes||'';
   renderTicks();renderEThumb();$('#delBtn').hidden=!i;$('#delBox').innerHTML='';
   closeSheet(true);openSheet('editSheet');$('#editForm').scrollTop=0;if(!i)setTimeout(()=>$('#eName').focus(),250);
 }
@@ -626,7 +652,7 @@ document.addEventListener('click',async e=>{
       const min=minRaw===''?price:Math.round(+minRaw);if(!(min>=0)||min>price){toast('El mínimo no puede ser mayor que el precio');$('#eMin').focus();break}
       t.disabled=true;let photo=ePhoto;
       if(ePhotoBlob){try{photo=await uploadPhoto(ePhotoBlob)}catch(err){toast(isNet(err)?'Necesitas señal para subir la foto':'No se pudo subir la foto');t.disabled=false;break}}
-      const row={name,price,min_price:min,qty,type:$('#eType').value,cond:$('#eCond').value,tested:eTests,pitch:$('#ePitch').value.trim(),notes:$('#eNotes').value.trim(),photo_url:photo.startsWith('data:')?'':photo};
+      const row={name,price,min_price:min,qty,type:$('#eType').value,cond:$('#eCond').value,tested:eTests,compatible:$('#eCompat').value.trim(),pitch:$('#ePitch').value.trim(),notes:$('#eNotes').value.trim(),photo_url:photo.startsWith('data:')?'':photo};
       const data=await ownerWrite(editing?sb.from('items').update(row).eq('id',editing).select().single():sb.from('items').insert(row).select().single(),editing?'Cambios guardados':'Cámara agregada');
       t.disabled=false;
       if(data){const k=base.items.findIndex(x=>x.id===data.id);if(k>=0)base.items[k]=data;else base.items.push(data);derive();saveCache();closeSheet();renderChat(false)}break}
