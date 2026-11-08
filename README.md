@@ -14,6 +14,14 @@ App web para vender cámaras de segunda mano en ferias, pensada para usarse con 
 4. **Vendedor:** abre el link, crea su cuenta y escribe el código. Puede buscar, vender, apartar y ver las ventas; no edita precios ni inventario.
 5. En el celular: "Agregar a pantalla de inicio".
 
+## Varias ferias a la vez
+
+- Hay una **bodega** y las **ferias abiertas**; cada una tiene su propio stock. El total de un producto es la suma de todos los lugares.
+- Tocando el nombre de arriba se elige dónde está vendiendo ese celular. Cada vendedor ve solo las ferias a las que el dueño lo asignó.
+- **Mover cámaras:** desde el selector de feria o desde Menú → Ferias. Se eligen origen, destino y cuántas unidades; también funciona sin señal y se envía después. En la ficha de una cámara aparece "Dónde está" con botones *Traer 1* / *Llevar 1*, y al buscar algo que está en otra feria sale con el botón *Traer*.
+- Solo se mueven unidades libres (las apartadas no). Cada traslado queda registrado en `moves`.
+- **Cerrar una feria** devuelve lo que quedó a la bodega (los apartados se liberan). Las ventas quedan guardadas con su feria.
+
 ## Cómo encuentra el vendedor una cámara sin escribir
 
 Portada → **Por marca** (con unidades disponibles) → grilla de modelos con el número grande del modelo (lo que está impreso en la cámara: "FE-230", "D-230", "S5 IS"), precio y stock → **+** al carro. También quedan los **Vistos recién** para volver a una cámara que el cliente estaba mirando.
@@ -41,6 +49,7 @@ public/
     asistente.js      acciones, tarjetas y chat del asistente
     buscador.js       buscador, índice por marca, carro, ficha
     panel.js          panel del dueño, editor, importar
+    ferias.js         elegir feria, mover cámaras, abrir/cerrar ferias
     eventos.js        toques y teclado
     arranque.js       login, registro y arranque
   vendor/             cliente de Supabase (sin CDN)
