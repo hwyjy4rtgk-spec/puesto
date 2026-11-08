@@ -184,7 +184,7 @@ function renderChat(scroll=true){
 }
 function renderHeader(){
   if(!me.role)return;
-  $('#hName').textContent=S.event.name||'Puesto';
+  $('#hName').innerHTML=esc(S.event.name||'Puesto')+(S.places.length>1?' <span class="caret">▾</span>':'');
   const net=!online?`<span class="netpill off">Sin señal${outbox.length?' · '+outbox.length+' por enviar':''}</span>`:outbox.length?`<span class="netpill">Enviando ${outbox.length}</span>`:'';
   $('#hStats').innerHTML=(net?net+' ':'')+`<span class="num">${nCam()} cámaras · ${nAcc()} acc.</span>${S.seller?' <span class="badge">Vendedor</span>':''}`;
   const av=$('#meAv');if(av)av.textContent=((me.name||me.email||'?').trim()[0]||'?').toUpperCase();

@@ -65,18 +65,20 @@ const brandOf=n=>{const w=String(n).trim().split(/\s+/)[0]||'';return w.charAt(0
 
 /* ================= estado ================= */
 // base: lo último que dijo el servidor. outbox: acciones aún no confirmadas. S: lo que se ve (base + outbox).
-let base={items:[],sales:[],settings:{event_name:'',event_started:new Date(0).toISOString()},members:[]};
+let base={items:[],sales:[],settings:{event_name:'',event_started:new Date(0).toISOString()},members:[],places:[],stock:[],pm:[]};
+// here: el lugar (feria o bodega) donde está trabajando este celular
+let here=null;try{here=localStorage.getItem('puesto.here')||null}catch(e){}
 let me={id:null,role:null,name:'',email:''};
 let outbox=[], chat=[];
-let S={items:[],sales:[],event:{name:'',started:0},seller:true};
+let S={items:[],sales:[],event:{name:'',started:0},seller:true,places:[]};
 let online=navigator.onLine, flushing=false, channel=null, inviteCode='';
 
-function loadCache(){try{const c=JSON.parse(localStorage.getItem(CACHE)||'null');if(c&&c.me&&c.me.id){base=c.base||base;me=c.me;outbox=c.outbox||[];chat=c.chat||[];if(c.posCart&&Array.isArray(c.posCart.lines))posCart=c.posCart;return true}}catch(e){}return false}
+function loadCache(){try{const c=JSON.parse(localStorage.getItem(CACHE)||'null');if(c&&c.me&&c.me.id){base={...base,...(c.base||{})};me=c.me;outbox=c.outbox||[];chat=c.chat||[];if(c.posCart&&Array.isArray(c.posCart.lines))posCart=c.posCart;return true}}catch(e){}return false}
 function saveCache(){try{chat=chat.slice(-80);localStorage.setItem(CACHE,JSON.stringify({base,me,outbox,chat,posCart}))}catch(e){}}
 function clearCache(){try{localStorage.removeItem(CACHE)}catch(e){}}
 
 const vItem=r=>({compatible:r.compatible||'',id:r.id,name:r.name,type:r.type,cond:r.cond,price:r.price,min:r.min_price,qty:r.qty,tested:r.tested||[],pitch:r.pitch||'',notes:r.notes||'',photo:r.photo_url||'',status:r.status,holdFor:r.hold_for||'',held:Math.min(r.qty,r.held!=null?r.held:(r.status==='apart'?1:0))});
-const vSale=r=>({id:r.id,itemId:r.item_id,name:r.name,list:r.list_price,price:r.price,method:r.method,ts:Date.parse(r.sold_at),void:!!r.voided,sellerId:r.seller_id,eventStarted:Date.parse(r.event_started),pending:!!r.pending});
+const vSale=r=>({place:r.place_id||null,id:r.id,itemId:r.item_id,name:r.name,list:r.list_price,price:r.price,method:r.method,ts:Date.parse(r.sold_at),void:!!r.voided,sellerId:r.seller_id,eventStarted:Date.parse(r.event_started),pending:!!r.pending});
 function itemOp(it,op){
   if(!it)return;const names=(it.hold_for||'').split(' · ').filter(Boolean);let held=it.held!=null?it.held:(it.status==='apart'?1:0);
   if(op.kind==='sell'){const useHold=held>0&&(op.from_hold||it.qty-held<=0);it.qty=Math.max(0,it.qty-1);if(useHold){held--;names.shift()}}
@@ -85,50 +87,81 @@ function itemOp(it,op){
   if(op.kind==='release'&&held>0){held--;const k=op.who?names.indexOf(op.who):0;names.splice(k>=0?k:0,1)}
   it.held=Math.min(held,it.qty);it.hold_for=it.held?names.join(' · '):'';it.status=it.held?'apart':'disp';
 }
+/* --- lugares: bodega + ferias --- */
+const placeById=id=>base.places.find(p=>p.id===id);
+const bodegaId=()=>(base.places.find(p=>p.kind==='bodega')||{}).id||null;
+const placeName=id=>(placeById(id)||{}).name||'otro lugar';
+const multi=()=>base.places.length>0;
+function canUse(id){const p=placeById(id);if(!p||!p.open)return false;if(me.role==='owner')return true;return p.kind==='feria'&&base.pm.some(m=>m.place_id===id&&m.user_id===me.id)}
+function myPlaces(){return base.places.filter(p=>canUse(p.id)).sort((a,b)=>(a.kind==='bodega')-(b.kind==='bodega')||Date.parse(a.started_at)-Date.parse(b.started_at))}
+function fixHere(){const L=myPlaces();if(!L.some(p=>p.id===here))here=L[0]?L[0].id:null;try{localStorage.setItem('puesto.here',here||'')}catch(e){}}
+function setHere(id){if(!canUse(id))return;here=id;try{localStorage.setItem('puesto.here',id)}catch(e){}posCart.lines=[];refreshUI()}
+// Aplica una acción sobre filas de stock (sirve para la vista optimista y para lo confirmado).
+function stockOp(get,op,sale){
+  if(op.kind==='sell'||op.kind==='hold'||op.kind==='release')itemOp(get(op.item_id,op.place,op.kind==='sell'?false:op.kind==='hold'),op);
+  if(op.kind==='void'&&sale){const p=placeById(sale.place_id);itemOp(get(sale.item_id,p&&p.open?sale.place_id:bodegaId(),true),op)}
+  if(op.kind==='move'){const a=get(op.item_id,op.from,false),b=get(op.item_id,op.to,true);if(!a||!b)return;const n=Math.min(op.qty,Math.max(0,a.qty-(a.held||0)));a.qty-=n;b.qty+=n}
+}
+function stockGetter(arr,map){return (item,place,create)=>{if(!place)return null;const k=item+'|'+place;let r=map.get(k);if(!r&&create){r={item_id:item,place_id:place,qty:0,held:0,hold_for:''};map.set(k,r);if(arr)arr.push(r)}return r}}
 function derive(){
+  if(multi())fixHere();
   const items=new Map(base.items.map(r=>[r.id,{...r}]));
   const sales=new Map(base.sales.map(r=>[r.id,{...r}]));
+  const stock=new Map(base.stock.map(r=>[r.item_id+'|'+r.place_id,{...r}]));const get=stockGetter(null,stock);
   for(const op of outbox){
-    const it=items.get(op.item_id);
-    if(op.kind==='sell'){if(sales.has(op.id))continue;itemOp(it,op);
-      sales.set(op.id,{id:op.id,item_id:op.item_id,name:op.name,list_price:op.list,price:op.price,method:op.method,sold_at:op.sold_at,voided:false,seller_id:me.id,event_started:base.settings.event_started,pending:true})}
-    if(op.kind==='void'){const s=sales.get(op.sale_id);if(s&&!s.voided){s.voided=true;itemOp(items.get(s.item_id),op)}}
-    if(op.kind==='hold'||op.kind==='release')itemOp(it,op);
+    if(op.kind==='sell'){if(sales.has(op.id))continue;if(multi())stockOp(get,op);else itemOp(items.get(op.item_id),op);
+      sales.set(op.id,{id:op.id,item_id:op.item_id,name:op.name,list_price:op.list,price:op.price,method:op.method,sold_at:op.sold_at,voided:false,seller_id:me.id,event_started:base.settings.event_started,place_id:op.place||null,pending:true})}
+    if(op.kind==='void'){const s=sales.get(op.sale_id);if(s&&!s.voided){s.voided=true;if(multi())stockOp(get,op,s);else itemOp(items.get(s.item_id),op)}}
+    if(op.kind==='hold'||op.kind==='release'){if(multi())stockOp(get,op);else itemOp(items.get(op.item_id),op)}
+    if(op.kind==='move')stockOp(get,op);
   }
-  S.items=[...items.values()].map(vItem);
+  const by=new Map();for(const r of stock.values()){if(!(r.qty>0))continue;if(!by.has(r.item_id))by.set(r.item_id,[]);by.get(r.item_id).push(r)}
+  S.items=[...items.values()].map(r=>{const v=vItem(r);
+    if(multi()){const rows=by.get(r.id)||[],h=rows.find(x=>x.place_id===here);
+      v.qty=h?h.qty:0;v.held=h?Math.min(h.held||0,h.qty):0;v.holdFor=h?h.hold_for||'':'';v.status=v.held?'apart':'disp';
+      v.total=rows.reduce((a,x)=>a+x.qty,0);
+      v.where=rows.filter(x=>x.place_id!==here&&placeById(x.place_id)).map(x=>({id:x.place_id,name:placeName(x.place_id),qty:x.qty,free:Math.max(0,x.qty-(x.held||0)),mine:canUse(x.place_id)}));
+    }else{v.total=v.qty;v.where=[]}
+    return v});
   S.sales=[...sales.values()].map(vSale).sort((a,b)=>a.ts-b.ts);
-  S.event={name:base.settings.event_name,started:Date.parse(base.settings.event_started)};
+  const hp=placeById(here);
+  S.event=hp?{name:hp.name,started:Date.parse(hp.started_at),place:hp.id}:{name:base.settings.event_name,started:Date.parse(base.settings.event_started),place:null};
   S.seller=me.role!=='owner';
+  S.places=myPlaces();
 }
 const byId=id=>S.items.find(i=>i.id===id);
 const ptxt=i=>i.price>0?clp.format(i.price):'Consultar precio';
 const live=i=>i&&i.qty>0;
 const free=i=>i?Math.max(0,i.qty-(i.held||0)):0;
 const avail=i=>!!i&&free(i)>0;
-const evSales=()=>S.sales.filter(s=>s.eventStarted>=S.event.started);
+const evSales=()=>S.event.place?S.sales.filter(s=>s.place===S.event.place):S.sales.filter(s=>s.eventStarted>=S.event.started);
 const nAvail=()=>S.items.reduce((a,i)=>a+free(i),0);
 const nCam=()=>S.items.filter(isCam).reduce((a,i)=>a+free(i),0);
 const thumb=i=>i.photo?`<img src="${esc(i.photo)}" alt="" loading="lazy">`:sil(i.type);
-const dot=i=>!live(i)?'<span class="dot bad">Vendida</span>':free(i)<=0?'<span class="dot hold">Apartada</span>':`<span class="dot ok">${free(i)>1?free(i)+' disp.':'Disponible'}</span>`;
+const dot=i=>!live(i)&&i.where&&i.where.length?`<span class="dot where">En ${esc(i.where[0].name)}</span>`:!live(i)?'<span class="dot bad">'+(multi()?'Agotada':'Vendida')+'</span>':free(i)<=0?'<span class="dot hold">Apartada</span>':`<span class="dot ok">${free(i)>1?free(i)+' disp.':'Disponible'}</span>`;
 
 /* ================= servidor ================= */
-const PERM={bad_price:'falta el precio',sold_out:'ya estaba vendida',below_min:'el precio quedó bajo el mínimo',forbidden:'no tienes permiso',not_found:'ya no existe en el inventario',bad_method:'medio de pago inválido'};
+const PERM={not_enough:'no quedaban unidades libres para mover',place_closed:'la feria ya se cerró',held_units:'hay unidades apartadas',bad_qty:'cantidad inválida',bad_price:'falta el precio',sold_out:'ya estaba vendida',below_min:'el precio quedó bajo el mínimo',forbidden:'no tienes permiso',not_found:'ya no existe en el inventario',bad_method:'medio de pago inválido'};
 const errCode=e=>{const m=String(e?.message||e||'');return Object.keys(PERM).find(k=>m.includes(k))||null};
 const isNet=e=>{const m=String(e?.message||e||'');return !errCode(e)&&(/fetch|network|Load failed|timeout|offline|ERR_/i.test(m)||!navigator.onLine)};
 
 async function loadAll(){
-  const [it,st,mb]=await Promise.all([
+  const [it,st,mb,pl,sk,pm]=await Promise.all([
     sb.from('items').select('*').order('name'),
     sb.from('settings').select('*').eq('id',1).single(),
-    sb.from('members').select('user_id,role,name,created_at').order('created_at')
+    sb.from('members').select('user_id,role,name,created_at').order('created_at'),
+    sb.from('places').select('*').order('started_at'),
+    sb.from('stock').select('item_id,place_id,qty,held,hold_for'),
+    sb.from('place_members').select('place_id,user_id')
   ]);
-  for(const r of [it,st,mb])if(r.error)throw r.error;
-  const sl=await sb.from('sales').select('*').gte('event_started',st.data.event_started).order('sold_at');
+  for(const r of [it,st,mb,pl,sk,pm])if(r.error)throw r.error;
+  const openIds=pl.data.filter(p=>p.open).map(p=>p.id);
+  const sl=openIds.length?await sb.from('sales').select('*').in('place_id',openIds).order('sold_at'):{data:[]};
   if(sl.error)throw sl.error;
-  base={items:it.data,settings:st.data,members:mb.data,sales:sl.data};
-  // descarta de la cola ventas que el servidor ya tiene
+  base={items:it.data,settings:st.data,members:mb.data,sales:sl.data,places:pl.data,stock:sk.data,pm:pm.data};
+  // descarta de la cola ventas y movimientos que el servidor ya tiene
   outbox=outbox.filter(op=>!(op.kind==='sell'&&base.sales.some(s=>s.id===op.id)));
-  saveCache();
+  fixHere();saveCache();
 }
 function subscribe(){
   if(channel)sb.removeChannel(channel);
@@ -139,11 +172,24 @@ function subscribe(){
     .on('postgres_changes',{event:'*',schema:'public',table:'sales'},p=>{
       if(p.eventType==='DELETE')base.sales=base.sales.filter(r=>r.id!==p.old.id);
       else{const mine=outbox.some(o=>o.id===p.new.id);up(base.sales,p.new);
-        if(p.eventType==='INSERT'&&!mine&&p.new.seller_id!==me.id&&!p.new.voided)toast(`Se vendió ${p.new.name} en otro celular`)}
+        if(p.eventType==='INSERT'&&!mine&&p.new.seller_id!==me.id&&!p.new.voided&&(!p.new.place_id||p.new.place_id===here))toast(`Se vendió ${p.new.name} en otro celular`)}
       refreshUI()})
     .on('postgres_changes',{event:'*',schema:'public',table:'settings'},p=>{
       const changed=p.new.event_started!==base.settings.event_started;base.settings=p.new;
       if(changed){base.sales=base.sales.filter(s=>s.event_started>=p.new.event_started)}refreshUI()})
+    .on('postgres_changes',{event:'*',schema:'public',table:'stock'},p=>{
+      const k=r=>r.item_id+'|'+r.place_id;
+      if(p.eventType==='DELETE')base.stock=base.stock.filter(r=>k(r)!==k(p.old));
+      else{const j=base.stock.findIndex(r=>k(r)===k(p.new));if(j>=0)base.stock[j]=p.new;else base.stock.push(p.new)}refreshUI()})
+    .on('postgres_changes',{event:'*',schema:'public',table:'places'},p=>{
+      if(p.eventType==='DELETE')base.places=base.places.filter(r=>r.id!==p.old.id);
+      else{const was=placeById(p.new.id);up(base.places,p.new);
+        if(was&&was.open&&!p.new.open){base.stock=base.stock.filter(r=>r.place_id!==p.new.id);if(here===p.new.id)toast(`Se cerró ${p.new.name}`);loadAll().then(refreshUI).catch(()=>{})}}
+      refreshUI()})
+    .on('postgres_changes',{event:'*',schema:'public',table:'place_members'},p=>{
+      const k=r=>r.place_id+'|'+r.user_id;
+      if(p.eventType==='DELETE')base.pm=base.pm.filter(r=>k(r)!==k(p.old));else if(!base.pm.some(r=>k(r)===k(p.new)))base.pm.push(p.new);
+      if((p.new&&p.new.user_id===me.id)||(p.old&&p.old.user_id===me.id))loadAll().then(refreshUI).catch(()=>{});refreshUI()})
     .on('postgres_changes',{event:'*',schema:'public',table:'members'},async p=>{
       if(p.eventType==='DELETE'&&p.old.user_id===me.id){toast('El dueño te quitó del puesto');await signOut();return}
       if(p.eventType==='DELETE')base.members=base.members.filter(m=>m.user_id!==p.old.user_id);else up(base.members,p.new,'user_id');refreshUI()})
@@ -153,18 +199,22 @@ let refreshT;
 function refreshUI(){clearTimeout(refreshT);refreshT=setTimeout(()=>{derive();saveCache();renderHeader();if(mode==='search')renderSearch();else if(!document.body.classList.contains('typing'))renderChat(false);if($('#coSheet').classList.contains('on'))renderCheckout();if($('#menuSheet').classList.contains('on'))renderMenu();if($('#itemSheet').classList.contains('on'))renderItem()},60)}
 
 async function runOp(op){
-  if(op.kind==='sell')return sb.rpc('sell_item',{p_sale_id:op.id,p_item_id:op.item_id,p_price:op.price,p_method:op.method,p_sold_at:op.sold_at,p_from_hold:!!op.from_hold});
+  const P=op.place?{p_place_id:op.place}:{};
+  if(op.kind==='sell')return sb.rpc('sell_item',{p_sale_id:op.id,p_item_id:op.item_id,p_price:op.price,p_method:op.method,p_sold_at:op.sold_at,p_from_hold:!!op.from_hold,...P});
   if(op.kind==='void')return sb.rpc('void_sale',{p_sale_id:op.sale_id});
-  if(op.kind==='hold')return sb.rpc('hold_item',{p_item_id:op.item_id,p_who:op.who});
-  if(op.kind==='release')return sb.rpc('release_item',{p_item_id:op.item_id,p_who:op.who||null});
+  if(op.kind==='hold')return sb.rpc('hold_item',{p_item_id:op.item_id,p_who:op.who,...P});
+  if(op.kind==='release')return sb.rpc('release_item',{p_item_id:op.item_id,p_who:op.who||null,...P});
+  if(op.kind==='move')return sb.rpc('move_stock',{p_move_id:op.id,p_item_id:op.item_id,p_from:op.from,p_to:op.to,p_qty:op.qty});
 }
 function applyToBase(op,data){
   const it=base.items.find(r=>r.id===op.item_id);
-  if(op.kind==='sell'&&data){if(!base.sales.some(s=>s.id===data.id)){base.sales.push(data);itemOp(it,op)}}
-  if(op.kind==='void'){const s=base.sales.find(x=>x.id===op.sale_id);if(s&&!s.voided){s.voided=true;itemOp(base.items.find(r=>r.id===s.item_id),op)}}
-  if(op.kind==='hold'||op.kind==='release')itemOp(it,op);
+  const get=stockGetter(base.stock,new Map(base.stock.map(r=>[r.item_id+'|'+r.place_id,r])));
+  if(op.kind==='sell'&&data){if(!base.sales.some(s=>s.id===data.id)){base.sales.push(data);if(multi())stockOp(get,{...op,place:data.place_id||op.place});else itemOp(it,op)}}
+  if(op.kind==='void'){const s=base.sales.find(x=>x.id===op.sale_id);if(s&&!s.voided){s.voided=true;if(multi())stockOp(get,op,s);else itemOp(base.items.find(r=>r.id===s.item_id),op)}}
+  if(op.kind==='hold'||op.kind==='release'){if(multi())stockOp(get,op);else itemOp(it,op)}
+  if(op.kind==='move')stockOp(get,op);
 }
-function enqueue(op){outbox.push(op);derive();saveCache();renderHeader();flush()}
+function enqueue(op){if(!op.place&&op.kind!=='void'&&op.kind!=='move'&&here)op.place=here;outbox.push(op);derive();saveCache();renderHeader();flush()}
 async function flush(){
   if(flushing||!outbox.length||!me.role)return;flushing=true;let failed=false;
   try{
@@ -175,7 +225,7 @@ async function flush(){
         if(isNet(res.error)){setOnline(false);break}
         outbox.shift();failed=true;
         const why=PERM[errCode(res.error)]||'hubo un error';
-        const label=op.kind==='sell'?`la venta de **${op.name}**`:op.kind==='void'?'la anulación':op.kind==='hold'?'el apartado':'la liberación';
+        const label=op.kind==='sell'?`la venta de **${op.name}**`:op.kind==='void'?'la anulación':op.kind==='hold'?'el apartado':op.kind==='move'?`el traslado de **${op.name||'un producto'}**`:'la liberación';
         bot({text:`No pude registrar ${label}: ${why}. Revisa el stock actualizado.`});
         continue;
       }

@@ -49,11 +49,11 @@ async function accountsAndOffline(b, url) {
   await p.evaluate(() => localStorage.clear()); await p.reload(); await p.waitForTimeout(300);
   await p.click('[data-act=toggleAuth]'); await p.fill('#aName', 'Dueña'); await p.fill('#aEmail', 'dueno@x.cl'); await p.fill('#aPass', 'secreto1'); await p.click('#authBtn'); await p.waitForTimeout(500);
   check('la primera cuenta entra como dueño', !(await p.isHidden('#app')));
-  await p.click('header .title'); await p.waitForTimeout(200); await p.click('#menuBody [data-act=openImport]'); await p.waitForTimeout(250);
+  await p.click('button.round[data-act="openMenu"]'); await p.waitForTimeout(200); await p.click('#menuBody [data-act=openImport]'); await p.waitForTimeout(250);
   await p.fill('#impTxt', 'Olympus mju II; 350.000; 330.000; Muy buena\nPentax K1000 + 50mm; 210000; 190000; Excelente\nPolaroid 600; 75.000');
   await p.waitForTimeout(100); await p.click('#impBtn'); await p.waitForTimeout(400);
   check('pegar lista crea 3 productos', (await p.db()).items.length === 3, (await p.db()).items.length);
-  await p.click('header .title'); await p.waitForTimeout(150); await p.click('[data-mtab=ajustes]'); await p.waitForTimeout(300);
+  await p.click('button.round[data-act="openMenu"]'); await p.waitForTimeout(150); await p.click('[data-mtab=ajustes]'); await p.waitForTimeout(300);
   check('el dueño ve el código de invitación', (await p.textContent('#codeTxt')).trim() === 'ABC123');
 
   const s = await newPage(b, url);
@@ -71,7 +71,7 @@ async function accountsAndOffline(b, url) {
   await s.evaluate(() => { window.__offline = true; window.dispatchEvent(new Event('offline')); });
   await s.ask('vendí la olympus en 350 efectivo'); await s.click('.checkout [data-cpay]'); await s.waitForTimeout(400);
   check('sin señal la venta queda por enviar', /por enviar/.test(await s.textContent('#hStats')));
-  const tabs = await s.evaluate(() => { document.querySelector('header .title').click(); return [...document.querySelectorAll('#menuSeg button')].map(x => x.textContent); });
+  const tabs = await s.evaluate(() => { document.querySelector('button.round[data-act="openMenu"]').click(); return [...document.querySelectorAll('#menuSeg button')].map(x => x.textContent); });
   check('el vendedor no ve el inventario', !tabs.includes('Inventario'), tabs);
   await s.evaluate(() => document.getElementById('scrim').click());
   await s.evaluate(() => { window.__offline = false; window.dispatchEvent(new Event('online')); }); await s.waitForTimeout(900);
@@ -108,6 +108,60 @@ async function searchAndPanel(b, url) {
   check('sin errores de JavaScript', !p.errs.length, p.errs);
 }
 
+async function fairs(b, url) {
+  console.log('Varias ferias: abrir, mover, vender en cada una y cerrar');
+  const p = await newPage(b, url, SEED);
+  const db0 = await p.db();
+  const units0 = db0.items.reduce((a, i) => a + i.qty, 0);
+  check('migración: todo el stock queda en la feria abierta', db0.stock.reduce((a, s) => a + s.qty, 0) === units0 && db0.places.length === 2);
+  // abrir segunda feria
+  await p.tap('button.round[data-act="openMenu"]'); await p.waitForTimeout(250);
+  await p.tap('[data-mtab="ferias"]'); await p.waitForTimeout(200);
+  await p.tap('[data-act="newFair"]'); await p.fill('#nfName', 'Mercado Domingo'); await p.tap('[data-act="doNewFair"]'); await p.waitForTimeout(500);
+  check('al abrir la feria se ofrece llevar cámaras', await p.isVisible('#moveSheet.on'));
+  // elegir 2 unidades de una cámara con stock >= 2 y 1 de otra
+  const multi = (await p.db()).items.find(i => i.qty >= 2 && !i.held);
+  await p.fill('#mvQ', multi.name.split(' ').slice(0, 2).join(' ')); await p.waitForTimeout(150);
+  await p.tap(`[data-mvinc="${multi.id}"]`); await p.tap(`[data-mvinc="${multi.id}"]`);
+  await p.tap('#mvGo'); await p.waitForTimeout(500);
+  let db = await p.db(); const mk = db.places.find(x => x.name === 'Mercado Domingo');
+  const at = (d, it, pl) => (d.stock.find(s => s.item_id === it && s.place_id === pl) || { qty: 0 }).qty;
+  check('mover 2 unidades a la feria nueva', at(db, multi.id, mk.id) === 2, at(db, multi.id, mk.id));
+  check('el total no cambia al mover', db.items.reduce((a, i) => a + i.qty, 0) === units0);
+  // cambiar a la feria nueva y vender ahí
+  await p.tap('header .title'); await p.waitForTimeout(250);
+  check('el título abre el selector de feria', await p.isVisible('#placeSheet.on'));
+  await p.tap(`#placeSheet [data-here="${mk.id}"]`); await p.waitForTimeout(300);
+  check('la cabecera muestra la feria elegida', /Mercado Domingo/.test(await p.textContent('#hName')));
+  const listed = await p.$$eval('#search .srow [data-open]', a => a.length);
+  check('en la feria nueva solo se ve lo que se llevó', listed === 1, listed);
+  await p.tap(`[data-add="${multi.id}"]`); await p.waitForTimeout(150); await p.tap('#cartBar'); await p.waitForTimeout(300);
+  const needPrice = await p.$('.checkout .clp'); if (needPrice) await p.fill('.checkout .clp', String(Math.max(multi.price, 1000)));
+  await p.tap('.checkout [data-cpay]'); await p.waitForTimeout(500); await p.tap('#coSheet .btn.primary[data-act="closeSheet"]'); await p.waitForTimeout(300);
+  db = await p.db();
+  check('vender en la feria nueva descuenta de esa feria', at(db, multi.id, mk.id) === 1 && db.sales.some(s => s.place_id === mk.id));
+  // traer desde la otra feria con un toque, sin señal
+  const fe = db.places.find(x => x.kind === 'feria' && x.id !== mk.id);
+  const other = db.items.find(i => i.id !== multi.id && at(db, i.id, fe.id) > 0 && !i.held && /Olympus/.test(i.name));
+  await p.evaluate(() => { window.__offline = true; window.dispatchEvent(new Event('offline')); });
+  await p.fill('#msg', other.name.split(' ').slice(1, 3).join(' ')); await p.waitForTimeout(250);
+  check('buscar algo que está en otra feria lo muestra con "Traer"', !!(await p.$(`[data-bring="${other.id}:${fe.id}"]`)));
+  await p.tap(`[data-bring="${other.id}:${fe.id}"]`); await p.waitForTimeout(250);
+  check('sin señal, lo traído ya se ve aquí', !!(await p.$(`#search [data-add="${other.id}"]`)));
+  await p.evaluate(() => { window.__offline = false; window.dispatchEvent(new Event('online')); }); await p.waitForTimeout(900);
+  db = await p.db();
+  check('al volver la señal, el traslado queda en la base', at(db, other.id, mk.id) === 1);
+  // cerrar la feria nueva
+  await p.fill('#msg', ''); await p.tap('button.round[data-act="openMenu"]'); await p.waitForTimeout(250); await p.tap('[data-mtab="ferias"]'); await p.waitForTimeout(150);
+  await p.tap(`[data-fopen="${mk.id}"]`); await p.waitForTimeout(150); await p.tap(`[data-act="askCloseFair"][data-pid="${mk.id}"]`); await p.waitForTimeout(150);
+  await p.tap(`[data-fclose="${mk.id}"]`); await p.waitForTimeout(700);
+  db = await p.db(); const bo = db.places.find(x => x.kind === 'bodega');
+  check('cerrar la feria devuelve lo que quedó a la bodega', at(db, multi.id, bo.id) === 1 && at(db, other.id, bo.id) === 1 && !db.stock.some(s => s.place_id === mk.id));
+  check('el total cuadra: inicial menos 1 vendida', db.items.reduce((a, i) => a + i.qty, 0) === units0 - 1);
+  check('sin desborde horizontal', !(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)));
+  check('sin errores de JavaScript', !p.errs.length, p.errs);
+}
+
 // Frases que el vendedor escribe de verdad y lo que la respuesta debe contener.
 const PHRASES = [
   ['cuantas digitales quedan', /Quedan \d+ digitales/],
@@ -128,7 +182,7 @@ async function language(b, url) {
   await new Promise(r => srv.listen(0, r));
   const url = `http://localhost:${srv.address().port}/puesto/`;
   const b = await chromium.launch();
-  try { await accountsAndOffline(b, url); await searchAndPanel(b, url); await language(b, url); }
+  try { await accountsAndOffline(b, url); await searchAndPanel(b, url); await fairs(b, url); await language(b, url); }
   catch (e) { fails++; console.log('  ✗ error inesperado: ' + e.message.split('\n')[0]); }
   await b.close(); srv.close();
   console.log(`\n${passes} bien, ${fails} mal`);

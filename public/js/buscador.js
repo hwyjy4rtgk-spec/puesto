@@ -69,6 +69,7 @@ function hl(name){if(!hlToks.length)return esc(name);
 function renderSearch(){
   if(!me.role)return;
   const q=sQuery.trim();
+  if(multi()&&!here){$('#filters').innerHTML='';$('#search').innerHTML=`<div class="sempty" style="margin-top:24px"><b>No tienes una feria asignada</b><span>Pídele al dueño que te agregue a la feria donde vas a vender. Apenas lo haga, aparece aquí sola.</span></div>`;renderCartBar();return}
   renderFilters();
   let pool=filterPool(),{items,a}=q?searchItems(q,pool):{items:pool,a:null};
   hlToks=a?a.toks:[];
@@ -101,9 +102,13 @@ function renderSearch(){
     if(near.length)h+=`<div class="shead"><span>Lo más parecido</span></div><div class="slist">${near.map(sRow).join('')}</div>`;
     if(q&&!isCommand(q))h+=`<button class="askrow" data-ask="${esc(q)}"><span class="av2">${AP('')}</span><span><small>Preguntarle al asistente</small><b>${esc(q)}</b></span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>`;
   }
+  if(q&&multi()&&!isCommand(q)){const other=S.items.filter(i=>!live(i)&&i.where.some(w=>w.qty>0));const r=other.length?searchItems(q,other):{items:[]};
+    if(r.items.length&&r.items!==other)h+=`<div class="shead"><span>En otro lugar</span></div><div class="slist">${r.items.slice(0,8).map(oRow).join('')}</div>`}
   $('#search').innerHTML=h;
   renderCartBar();
 }
+function oRow(i){const w=[...i.where].sort((a,b)=>b.mine-a.mine||b.free-a.free)[0];
+  return `<div class="srow dim"><button class="sbody" data-open="${i.id}"><span class="thumb">${thumb(i)}</span><span class="mid"><span class="nm">${hl(i.name)}</span><span class="meta where">En ${esc(w.name)} · ${w.qty} ${plural(w.qty,'unidad','unidades')}</span></span><span class="right"><span class="price num${i.price>0?'':' np'}">${i.price>0?clp.format(i.price):'Consultar'}</span></span></button>${w.mine&&w.free>0?`<button class="bringb" data-bring="${i.id}:${w.id}" aria-label="Traer una a ${esc(S.event.name)}">Traer</button>`:'<span class="addb ph"></span>'}</div>`}
 function setMode(m,opts={}){
   mode=m;document.body.classList.toggle('mode-chat',m==='chat');document.body.classList.toggle('mode-search',m==='search');
   $('#search').hidden=m!=='search';$('#chat').hidden=m!=='chat';
@@ -156,10 +161,12 @@ function renderItem(){
     ${i.pitch?`<div class="pitchbox"><small>Qué decirle al cliente</small><p>${esc(i.pitch)}</p></div>`:''}
     ${i.tested.length?`<h3>Probado y funcionando</h3><div class="checks">${i.tested.map(t=>`<span>✓ ${esc(t)}</span>`).join('')}</div>`:''}
     ${i.notes?`<h3>Detalles y defectos</h3><div class="note">${esc(i.notes)}</div>`:''}
-    ${i.qty>1?`<p class="hint num">Quedan ${i.qty} unidades.</p>`:''}
+    ${i.qty>1?`<p class="hint num">Quedan ${i.qty} unidades${multi()?' aquí':''}.</p>`:''}
+    ${multi()&&i.where.length?`<h3>Dónde está</h3><div class="wlist"><div class="wrow here"><span><b>${esc(S.event.name)}</b><small>aquí</small></span><b class="num">${i.qty}</b><span></span></div>${i.where.map(w=>`<div class="wrow"><span><b>${esc(w.name)}</b>${w.free<w.qty?`<small class="num">${w.qty-w.free} apart.</small>`:''}</span><b class="num">${w.qty}</b><span class="wact">${w.mine&&w.free>0?`<button class="btn sm" data-bring="${i.id}:${w.id}">Traer 1</button>`:''}${w.mine&&free(i)>0?`<button class="btn sm" data-take="${i.id}:${w.id}">Llevar 1</button>`:''}</span></div>`).join('')}</div>`:''}
     ${alts.length?`<h3>Si no la convence, ofrécele</h3><div class="stack">${alts.map(cardHTML).join('')}</div>`:''}`;
   const f=[];
   if(holdFormFor===i.id){$('#itemFoot').innerHTML=`<div class="holdf"><input id="holdWho" autocomplete="off" placeholder="¿Para quién? Ej: Diego, vuelve 18:00" enterkeyhint="done"><div class="btnrow"><button class="btn" data-holdno="1" style="flex:0 1 110px">Cancelar</button><button class="btn primary" data-holdok="${i.id}">Apartar</button></div></div>`;setTimeout(()=>$('#holdWho')&&$('#holdWho').focus(),80);return}
+  if(!live(i)&&multi()){const w=i.where.find(x=>x.mine&&x.free>0);if(w)f.push(`<button class="btn primary" data-bring="${i.id}:${w.id}">Traer 1 desde ${esc(w.name)}</button>`);else if(i.where.length)f.push(`<span class="hint" style="flex:1;align-self:center">Está en ${esc(i.where[0].name)}</span>`)}
   if(live(i)){if(i.held>0&&free(i)>0)f.push(`<button class="btn" data-release="${i.id}" style="flex:0 1 110px">Liberar</button>`);f.push(i.held>0&&free(i)<=0?`<button class="btn" data-release="${i.id}" style="flex:0 1 120px">Liberar</button>`:`<button class="btn" data-hold="${i.id}" style="flex:0 1 120px">Apartar</button>`);f.push(`<button class="btn primary" data-sell="${i.id}">Vender</button>`)}
   if(!S.seller)f.push(`<button class="btn" data-edit="${i.id}" style="flex:0 0 auto">Editar</button>`);
   $('#itemFoot').innerHTML=`<div class="btnrow">${f.join('')}</div>`;

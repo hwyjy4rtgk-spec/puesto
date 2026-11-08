@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="styles.css?v=10">
+<link rel="stylesheet" href="styles.css?v=11">
 <style>
 :root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 *,*::before,*::after{box-sizing:border-box}
@@ -58,7 +58,7 @@ img{max-width:100%}
   <div class="hrow wrap">
     <button class="round only-search" data-act="openMenu" aria-label="Menú: inventario, ventas y ajustes"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg></button>
     <button class="round only-chat" data-act="toSearch" aria-label="Volver al buscador"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
-    <button class="title" data-act="openMenu"><b><span id="hName">Puesto</span></b><small id="hStats"></small></button>
+    <button class="title" data-act="titleTap"><b><span id="hName">Puesto</span></b><small id="hStats"></small></button>
     <button class="round only-search" data-act="toChat" aria-label="Abrir asistente"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="url(#apg)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M14.31 8l5.74 9.94M9.69 8h11.48M7.38 12l5.74-9.94M9.69 16L3.95 6.06M14.31 16H2.83M16.62 12l-5.74 9.94"/></svg></button>
     <button class="round only-chat" data-act="clearChat" aria-label="Nueva conversación"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
   </div>
@@ -96,6 +96,20 @@ img{max-width:100%}
   <div class="sb pad" id="menuBody"></div>
 </div>
 
+<div class="sheet" id="placeSheet" role="dialog" aria-label="Dónde vendo">
+  <div class="grab"></div>
+  <div class="sh pad"><h2>¿Dónde estás vendiendo?</h2><button class="icon-btn" data-act="closeSheet" aria-label="Cerrar"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div class="sb pad" id="placeBody"></div>
+</div>
+
+<div class="sheet" id="moveSheet" role="dialog" aria-label="Mover cámaras">
+  <div class="grab"></div>
+  <div class="sh pad"><h2>Mover cámaras</h2><button class="icon-btn" data-act="closeSheet" aria-label="Cerrar"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div class="pad" id="moveHead"></div>
+  <div class="sb pad" id="moveBody"></div>
+  <div class="sf pad"><button class="btn primary" id="mvGo" data-act="doMove" style="width:100%" disabled>Elige qué mover</button></div>
+</div>
+
 <div class="sheet" id="coSheet" role="dialog" aria-label="Cobro">
   <div class="grab"></div>
   <div class="sh pad"><h2>Cobro</h2><button class="icon-btn" data-act="closeSheet" aria-label="Cerrar"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
@@ -117,7 +131,7 @@ img{max-width:100%}
     <div class="two"><label class="f">Tipo<select id="eType"></select></label><label class="f">Estado<select id="eCond"></select></label></div>
     <div class="two"><label class="f">Precio de venta<input id="ePrice" type="number" inputmode="numeric" min="0" step="1000" required></label><label class="f">Precio mínimo<input id="eMin" type="number" inputmode="numeric" min="0" step="1000"><small>Hasta dónde puede rebajar</small></label></div>
     <label class="f">Sirve para (accesorios)<input id="eCompat" autocomplete="off" placeholder="Ej: Instax Mini, Canon EF, Olympus FE-230"><small>Déjalo vacío si es una cámara</small></label>
-    <label class="f" style="max-width:50%">Unidades<input id="eQty" type="number" inputmode="numeric" min="0" step="1" required></label>
+    <label class="f" style="max-width:50%"><span id="eQtyLbl">Unidades</span><input id="eQty" type="number" inputmode="numeric" min="0" step="1" required></label>
     <div class="photo"><div class="thumb" id="eThumb"></div><div style="min-width:0"><p>Opcional. Sin foto se usa la ilustración del tipo.</p><div class="btnrow"><label class="btn" for="ePhoto" style="cursor:pointer;flex:0 0 auto;height:40px">Tomar foto</label><button type="button" class="btn" data-act="rmPhoto" id="rmPhoto" style="flex:0 0 auto;height:40px">Quitar</button></div><input id="ePhoto" type="file" accept="image/*" capture="environment" hidden></div></div>
     <div style="font-weight:600;font-size:13px;color:var(--ink-2);margin-bottom:6px">Probado y funcionando</div>
     <div class="ticks" id="eTicks"></div>
@@ -141,14 +155,15 @@ img{max-width:100%}
 
 <div class="toast" id="toast" role="status"></div>
 </div>
-<script src="vendor/supabase.js?v=10"></script>
-<script src="config.js?v=10"></script>
-<script src="js/core.js?v=10"></script>
-<script src="js/lenguaje.js?v=10"></script>
-<script src="js/asistente.js?v=10"></script>
-<script src="js/buscador.js?v=10"></script>
-<script src="js/panel.js?v=10"></script>
-<script src="js/eventos.js?v=10"></script>
-<script src="js/arranque.js?v=10"></script>
+<script src="vendor/supabase.js?v=11"></script>
+<script src="config.js?v=11"></script>
+<script src="js/core.js?v=11"></script>
+<script src="js/lenguaje.js?v=11"></script>
+<script src="js/asistente.js?v=11"></script>
+<script src="js/buscador.js?v=11"></script>
+<script src="js/panel.js?v=11"></script>
+<script src="js/ferias.js?v=11"></script>
+<script src="js/eventos.js?v=11"></script>
+<script src="js/arranque.js?v=11"></script>
 </body>
 </html>

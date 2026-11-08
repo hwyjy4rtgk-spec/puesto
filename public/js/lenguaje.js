@@ -330,10 +330,10 @@ async function addIntent(text){
   const pr=takePrice(body);body=pr.rest.replace(/\s+/g,' ').replace(/[,;]+$/,'').trim();
   if(!body||!pr.price){bot({text:'Para agregar escríbeme modelo y precio. Por ejemplo: “agrega Nikon F3 350 lucas mínimo 320”. También puedes pegar una lista entera con el botón +.',say:['Pegar lista']});return}
   const name=body.charAt(0).toUpperCase()+body.slice(1);
-  const row={name,type:guessType(name),cond,price:pr.price,min_price:min&&min<=pr.price?min:pr.price,qty:1};
+  const row={name,type:guessType(name),cond,price:pr.price,min_price:min&&min<=pr.price?min:pr.price,qty:1,...addTo()};
   const {data,error}=await sb.from('items').insert(row).select().single();
   if(error){bot({text:isNet(error)?'Necesito señal para agregar productos. Inténtalo de nuevo en un momento.':'No pude agregarlo: '+error.message});after();return}
-  if(!base.items.some(r=>r.id===data.id))base.items.push(data);derive();ctx.last=data.id;
+  addedItem(data);derive();ctx.last=data.id;
   bot({text:`Agregada como ${row.type.toLowerCase()}. Toca la ficha para completar qué decirle al cliente.`,items:[data.id],editHint:data.id});after();
 }
 const defaultSay=()=>{const av=S.items.filter(avail);const b=Object.entries(av.filter(isCam).reduce((a,i)=>{const k=brandOf(i.name);a[k]=(a[k]||0)+free(i);return a},{})).sort((x,y)=>y[1]-x[1]).slice(0,2).map(x=>`¿Tienes ${x[0]}?`);return ['Bajo 50 lucas',...b,'Accesorios','Resumen del día']};

@@ -21,7 +21,8 @@ document.addEventListener('click',async e=>{
   if(d.pickhold){const m=msgById(d.cm),i=byId(d.pickhold);if(m.pickHold)doHold(i,m.pickHold,m.pickQty);else askHold(i,m.pickQty);after();return}
   if(d.upsell){const i=byId(d.upsell);if(!i)return;if($('#coSheet').classList.contains('on')){posCart={lines:[{id:i.id,qty:1,price:i.price}],method:posCart.method};openCheckout();return}startCart([{id:i.id,qty:1,price:i.price}]);after();return}
   if(d.editok||d.editno){const m=msgById(d.editok||d.editno);if(!m||!m.edit||m.edit.state!=='open')return;if(d.editno){m.edit.state='cancel';after();return}
-    const e=m.edit;const row={[e.field]:e.value};const i=byId(e.id);if(e.field==='price'&&(i.min||0)>e.value)row.min_price=e.value;if(e.field==='min_price'&&e.value>i.price){toast('El mínimo no puede ser mayor que el precio');return}
+    const e=m.edit;if(e.field==='qty'){const ok=await setStock(e.id,e.value);if(ok)e.state='done';after();return}
+    const row={[e.field]:e.value};const i=byId(e.id);if(e.field==='price'&&(i.min||0)>e.value)row.min_price=e.value;if(e.field==='min_price'&&e.value>i.price){toast('El mínimo no puede ser mayor que el precio');return}
     const ok=await ownerWrite(sb.from('items').update(row).eq('id',e.id).select().single(),'Actualizado');if(ok){const k=base.items.findIndex(x=>x.id===ok.id);if(k>=0)base.items[k]=ok;derive();e.state='done'}after();return}
   if(d.cart){const m=msgById(d.cart);if(!m||!m.cart||m.cart.state!=='open')return;const c=m.cart;
     if(d.cq){const [k,dv]=d.cq.split(':').map(Number);const l=c.lines[k],i=byId(l.id);l.qty=Math.max(1,Math.min(i.qty,l.qty+dv))}
@@ -45,9 +46,8 @@ document.addEventListener('click',async e=>{
   if(d.mtab){menuTab=d.mtab;renderMenu();if(menuTab==='ajustes'&&!S.seller)loadInvite();return}
   if(d.edit){if(!S.seller)openEdit(byId(d.edit));return}
   if(d.tick){eTests=eTests.includes(d.tick)?eTests.filter(x=>x!==d.tick):[...eTests,d.tick];renderTicks();return}
-  if(d.inc||d.dec){if(S.seller)return;const i=byId(d.inc||d.dec);const q=Math.max(i.held||0,i.qty+(d.inc?1:-1));if(q===i.qty){toast('Hay unidades apartadas');return}
-    const r=base.items.find(x=>x.id===i.id);const prev=r.qty;r.qty=q;derive();renderInvList();renderHeader();
-    const ok=await ownerWrite(sb.from('items').update({qty:q}).eq('id',i.id).select().single());if(ok)Object.assign(r,ok);else r.qty=prev;derive();renderInvList();if(mode==='search')renderSearch();return}
+  if(d.inc||d.dec){if(S.seller)return;const i=byId(d.inc||d.dec);const q=Math.max(i.held||0,i.qty+(d.inc?1:-1));if(q===i.qty){toast(i.held?'Hay unidades apartadas':'No hay unidades');return}
+    await setStock(i.id,q);renderInvList();if(mode==='search')renderSearch();return}
   if(d.voidm){voidSale(d.voidm);saveCache();renderMenu();renderChat(false);toast('Venta anulada');return}
   if(d.rmember){$('#rmBox').innerHTML=`<div class="confirm">¿Quitar a este vendedor? Ya no podrá ver ni vender.<div class="btnrow"><button class="btn" data-act="cancelRm">Cancelar</button><button class="btn danger" data-rmok="${d.rmember}">Quitar</button></div></div>`;return}
   if(d.rmok){const ok=await ownerWrite(sb.from('members').delete().eq('user_id',d.rmok).select(),'Vendedor quitado');if(ok){base.members=base.members.filter(m=>m.user_id!==d.rmok);renderMenu()}return}
@@ -64,9 +64,9 @@ document.addEventListener('click',async e=>{
     case 'newItem':openEdit(null);break;
     case 'openImport':openImport();break;
     case 'doImport':{const good=impRows.filter(r=>r.ok);if(!good.length)break;t.disabled=true;
-      const rows=good.map(r=>({name:r.name,type:r.type,cond:r.cond,price:r.price,min_price:r.min,qty:1}));
+      const rows=good.map(r=>({name:r.name,type:r.type,cond:r.cond,price:r.price,min_price:r.min,qty:1,...addTo()}));
       const data=await ownerWrite(sb.from('items').insert(rows).select());t.disabled=false;
-      if(data){data.forEach(r=>{if(!base.items.some(x=>x.id===r.id))base.items.push(r)});derive();closeSheet();bot({text:`Agregué **${data.length}** ${data.length===1?'cámara':'cámaras'}. Ya puedes buscarlas.`});after()}break}
+      if(data){data.forEach(addedItem);derive();closeSheet();bot({text:`Agregué **${data.length}** ${data.length===1?'cámara':'cámaras'}. Ya puedes buscarlas.`});after()}break}
     case 'rmPhoto':ePhoto='';ePhotoBlob=null;renderEThumb();break;
     case 'saveItem':{
       const name=$('#eName').value.trim(),price=Math.round(+$('#ePrice').value),qty=Math.round(+$('#eQty').value),minRaw=$('#eMin').value;
@@ -76,23 +76,24 @@ document.addEventListener('click',async e=>{
       const min=minRaw===''?price:Math.round(+minRaw);if(!(min>=0)||min>price){toast('El mínimo no puede ser mayor que el precio');$('#eMin').focus();break}
       t.disabled=true;let photo=ePhoto;
       if(ePhotoBlob){try{photo=await uploadPhoto(ePhotoBlob)}catch(err){toast(isNet(err)?'Necesitas señal para subir la foto':'No se pudo subir la foto');t.disabled=false;break}}
-      const row={name,price,min_price:min,qty,type:$('#eType').value,cond:$('#eCond').value,tested:eTests,compatible:$('#eCompat').value.trim(),pitch:$('#ePitch').value.trim(),notes:$('#eNotes').value.trim(),photo_url:photo.startsWith('data:')?'':photo};
+      const prevQty=editing?byId(editing).qty:null;
+      const row={name,price,min_price:min,...(editing?{}:{qty,...addTo()}),type:$('#eType').value,cond:$('#eCond').value,tested:eTests,compatible:$('#eCompat').value.trim(),pitch:$('#ePitch').value.trim(),notes:$('#eNotes').value.trim(),photo_url:photo.startsWith('data:')?'':photo};
       const data=await ownerWrite(editing?sb.from('items').update(row).eq('id',editing).select().single():sb.from('items').insert(row).select().single(),editing?'Cambios guardados':'Cámara agregada');
       t.disabled=false;
-      if(data){const k=base.items.findIndex(x=>x.id===data.id);if(k>=0)base.items[k]=data;else base.items.push(data);derive();saveCache();closeSheet();renderChat(false)}break}
+      if(data){const k=base.items.findIndex(x=>x.id===data.id);if(k>=0)base.items[k]=data;else addedItem(data);if(editing&&qty!==prevQty)await setStock(data.id,qty);derive();saveCache();closeSheet();renderChat(false)}break}
     case 'askDelete':$('#delBox').innerHTML=`<div class="confirm">¿Eliminar esta cámara? Las ventas registradas se conservan.<div class="btnrow"><button type="button" class="btn" data-act="cancelDel">Cancelar</button><button type="button" class="btn danger" data-act="doDelete">Eliminar</button></div></div>`;break;
     case 'cancelDel':$('#delBox').innerHTML='';break;
     case 'doDelete':{const ok=await ownerWrite(sb.from('items').delete().eq('id',editing).select(),'Cámara eliminada');if(ok){base.items=base.items.filter(x=>x.id!==editing);derive();saveCache();closeSheet();renderChat(false)}break}
     case 'copyReport':copy(report(),'Resumen copiado');break;
     case 'downloadCSV':downloadCSV();break;
-    case 'closeEvent':$('#closeBox').innerHTML=`<div class="confirm neutral">Las ventas quedan guardadas y el contador vuelve a cero en todos los celulares. El stock no cambia.<label class="f" style="margin:10px 0 0">Nombre del próximo evento<input id="nextEvt" placeholder="Ej: Mercado de las Pulgas, domingo"></label><div class="btnrow"><button class="btn" data-act="cancelClose">Cancelar</button><button class="btn primary" data-act="doClose">Empezar</button></div></div>`;break;
+    case 'closeEvent_legacy':$('#closeBox').innerHTML=`<div class="confirm neutral">Las ventas quedan guardadas y el contador vuelve a cero en todos los celulares. El stock no cambia.<label class="f" style="margin:10px 0 0">Nombre del próximo evento<input id="nextEvt" placeholder="Ej: Mercado de las Pulgas, domingo"></label><div class="btnrow"><button class="btn" data-act="cancelClose">Cancelar</button><button class="btn primary" data-act="doClose">Empezar</button></div></div>`;break;
     case 'cancelClose':$('#closeBox').innerHTML='';break;
     case 'doClose':{const n=$('#nextEvt').value.trim();const {error}=await sb.rpc('start_event',{p_name:n});
       if(error){toast(isNet(error)?'Necesitas señal para empezar un evento':'No se pudo: '+error.message);break}
       try{await loadAll()}catch(err){}derive();chat=[];saveCache();closeSheet();renderChat();toast('Nuevo evento: '+S.event.name);break}
     case 'clearChat':chat=[];ctx.last=null;pending=null;saveCache();closeSheet();renderChat();break;
     case 'copyCode':copy(inviteCode,'Código copiado');break;
-    case 'shareInvite':{const url=location.origin+location.pathname;const text=`Únete a ${S.event.name||'mi puesto'} en Puesto: ${url}\nCrea tu cuenta y usa el código ${inviteCode}`;try{if(navigator.share){await navigator.share({title:'Puesto',text});break}}catch(e){if(e&&e.name==='AbortError')break}copy(text,'Invitación copiada');break}
+    case 'shareInvite':{const url=location.origin+location.pathname;const text=`Únete a mi puesto en Puesto: ${url}\nCrea tu cuenta y usa el código ${inviteCode}`;try{if(navigator.share){await navigator.share({title:'Puesto',text});break}}catch(e){if(e&&e.name==='AbortError')break}copy(text,'Invitación copiada');break}
     case 'rotateCode':{const {data,error}=await sb.rpc('rotate_invite_code');if(error){toast('No se pudo cambiar el código');break}inviteCode=data;renderMenu();toast('Código nuevo: '+data);break}
     case 'cancelRm':$('#rmBox').innerHTML='';break;
     case 'signOut':await signOut();break;
